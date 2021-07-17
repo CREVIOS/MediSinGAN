@@ -1,15 +1,15 @@
-import torch
-import torch.nn as nn
+# import torch
+# import torch.nn as nn
+
 import numpy as np
-import torch.nn.functional as F
+import jax
+from jax import lax, random, numpy as jnp
+import flax
+from flax.core import freeze, unfreeze
+from flax import linen as nn
 
-
-class ConvBlock(nn.Sequential):
-    def __init__(self, in_channel, out_channel, ker_size, padd, stride):
-        super(ConvBlock,self).__init__()
-        self.add_module('conv',nn.Conv2d(in_channel ,out_channel,kernel_size=ker_size,stride=stride,padding=padd)),
-        self.add_module('norm',nn.BatchNorm2d(out_channel)),
-        self.add_module('LeakyRelu',nn.LeakyReLU(0.2, inplace=True))
+import numpy as np
+# import torch.nn.functional as F7
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -18,6 +18,43 @@ def weights_init(m):
     elif classname.find('Norm') != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
+
+
+class Sequential(nn.Module):
+  modules: List[nn.Module] = []
+
+  def add_module(self, new_module:nn.Module) -> None:
+    self.modules.add(new_module)
+
+  def __call__(self, x):
+    for module in modules:
+        x = module(x)
+    return x
+
+
+class ActivationLayer(nn.Module):
+    activation: Callable[[Array], Array]
+
+    @nn.compact
+    def __call__(self, x):
+        return self.activation(x)
+
+
+class ConvBlock(Sequential):
+    out_channel: int
+    ker_size: Union[int, Iterable[int]]
+    padd: Union[str, Iterable[Tuple[int, int]]]
+    stride:Optional[Iterable[int]]
+  
+  def setup(self):
+    self.add_module(nn.Conv(out_channel,kernel_size=self.ker_size,strides=self.stride,padding=self.padd, name='conv')),
+    self.add_module(nn.BatchNorm(name="norm")),
+    self.add_module(ActivationLayer(activation=lambda x : nn.leaky_relu(x, 0.2))
+
+  
+# TODO: move to jax code below
+
+
    
 class WDiscriminator(nn.Module):
     def __init__(self, opt):
