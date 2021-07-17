@@ -1,0 +1,5 @@
+# Don't track content of these folders
+SinGAN/Output/
+SinGAN/TrainedModels/
+SinGAN/__pycache__/
+SinGAN/.idea
