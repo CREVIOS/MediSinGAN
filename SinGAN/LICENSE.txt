@@ -1,6 +1,10 @@
 MIT License
 
-Copyright (c) 2021 CREVIOS
+SinGAN: Learning a Generative Model from a Single Natural Image
+ICCV 2019
+Tamar Rott Shaham, Tali Dekel, Tomer Michaeli
+
+Copyright (c) 2019 Tamar Rott Shaham, Tali Dekel, Tomer Michaeli
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
