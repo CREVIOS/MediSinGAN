@@ -1,8 +1,11 @@
-import torch
+import jax
+from jax import lax, random, numpy as jnp
+from jax import grad, jit, vmap
+import flax
+from flax import linen as nn
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-import torch.nn as nn
 import scipy.io as sio
 import math
 from skimage import io as img
@@ -11,15 +14,17 @@ from skimage import color, morphology, filters
 #from skimage import filters
 from SinGAN.imresize import imresize
 import os
-import random
+import random as std_random
 from sklearn.cluster import KMeans
+import pickle
+
 
 
 # custom weights initialization called on netG and netD
 
 def read_image(opt):
     x = img.imread('%s%s' % (opt.input_img,opt.ref_image))
-    return np2torch(x)
+    return np2jax(x)
 
 def denorm(x):
     out = (x + 1) / 2
@@ -74,17 +79,15 @@ def convert_image_np_2d(inp):
     # inp = std*
     return inp
 
-def generate_noise(size,num_samp=1,device='cuda',type='gaussian', scale=1):
-    if type == 'gaussian':
-        noise = torch.randn(num_samp, size[0], round(size[1]/scale), round(size[2]/scale), device=device)
-        noise = upsampling(noise,size[1], size[2])
-    if type =='gaussian_mixture':
-        noise1 = torch.randn(num_samp, size[0], size[1], size[2], device=device)+5
-        noise2 = torch.randn(num_samp, size[0], size[1], size[2], device=device)
-        noise = noise1+noise2
-    if type == 'uniform':
-        noise = torch.randn(num_samp, size[0], size[1], size[2], device=device)
-    return noise
+def generate_noise(key,size,num_samp=1,device=None,scale=1):
+    key, subkey = random.split(key)
+    
+    if device is None:
+        device = jax.devices()[0]
+    noise =  jax.device_put(random.normal(subkey, shape=(num_samp, size[0], round(size[1]/scale), round(size[2]/scale))), device=device)
+    noise = upsampling(noise, size[1], size[2])
+
+    return noise, key
 
 def plot_learning_curves(G_loss,D_loss,epochs,label1,label2,name):
     fig,ax = plt.subplots(1)
@@ -106,9 +109,7 @@ def plot_learning_curve(loss,epochs,name):
     plt.savefig('%s.png' % name)
     plt.close(fig)
 
-def upsampling(im,sx,sy):
-    m = nn.Upsample(size=[round(sx),round(sy)],mode='bilinear',align_corners=True)
-    return m(im)
+
 
 def reset_grads(model,require_grad):
     for p in model.parameters():
@@ -116,49 +117,44 @@ def reset_grads(model,require_grad):
     return model
 
 def move_to_gpu(t):
-    if (torch.cuda.is_available()):
-        t = t.to(torch.device('cuda'))
+    devices = jax.devices()
+    if not str(devices[0]).startswith('gpu'):
+        raise SystemError('GPU device not found')
+    t = jax.device_put(t,device=devices[0])
     return t
 
 def move_to_cpu(t):
-    t = t.to(torch.device('cpu'))
+    t = jax.device_put(t,device=jax.devices('cpu')[0])
     return t
 
-def calc_gradient_penalty(netD, real_data, fake_data, LAMBDA, device):
+def calc_gradient_penalty(paramsD, netD, key, real_data, fake_data, LAMBDA, device):
     #print real_data.size()
-    alpha = torch.rand(1, 1)
-    alpha = alpha.expand(real_data.size())
-    alpha = alpha.to(device)#cuda() #gpu) #if use_cuda else alpha
+    key, subkey = random.split(key)
+    alpha = random.uniform(subkey)
+    jax.device_put(alpha, device=device) #cuda() #gpu) #if use_cuda else alpha
 
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
 
 
-    interpolates = interpolates.to(device)#.cuda()
-    interpolates = torch.autograd.Variable(interpolates, requires_grad=True)
-
-    disc_interpolates = netD(interpolates)
-
-    gradients = torch.autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                              grad_outputs=torch.ones(disc_interpolates.size()).to(device),#.cuda(), #if use_cuda else torch.ones(
-                                  #disc_interpolates.size()),
-                              create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradients = jax.grad(netD.apply, argnums=1)(paramsD, interpolates)
     #LAMBDA = 1
     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
-    return gradient_penalty
+    return gradient_penalty, key
 
 def read_image(opt):
     x = img.imread('%s/%s' % (opt.input_dir,opt.input_name))
-    x = np2torch(x,opt)
+    x = np2jax(x,opt)
     x = x[:,0:3,:,:]
     return x
 
 def read_image_dir(dir,opt):
     x = img.imread('%s' % (dir))
-    x = np2torch(x,opt)
+    x = np2jax(x,opt)
     x = x[:,0:3,:,:]
     return x
 
-def np2torch(x,opt):
+
+def np2jax(x,opt):
     if opt.nc_im == 3:
         x = x[:,:,:,None]
         x = x.transpose((3, 2, 0, 1))/255
@@ -166,19 +162,19 @@ def np2torch(x,opt):
         x = color.rgb2gray(x)
         x = x[:,:,None,None]
         x = x.transpose(3, 2, 0, 1)
-    x = torch.from_numpy(x)
+    x = jnp.asarray(x)
     if not(opt.not_cuda):
         x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor) if not(opt.not_cuda) else x.type(torch.FloatTensor)
-    #x = x.type(torch.FloatTensor)
+   
     x = norm(x)
     return x
 
-def torch2uint8(x):
+
+def jax2uint8(x):
     x = x[0,:,:,:]
-    x = x.permute((1,2,0))
+    x = x.transpose((1,2,0))
     x = 255*denorm(x)
-    x = x.cpu().numpy()
+    x = np.array(x)
     x = x.astype(np.uint8)
     return x
 
@@ -187,10 +183,10 @@ def read_image2np(opt):
     x = x[:, :, 0:3]
     return x
 
-def save_networks(netG,netD,z,opt):
-    torch.save(netG.state_dict(), '%s/netG.pth' % (opt.outf))
-    torch.save(netD.state_dict(), '%s/netD.pth' % (opt.outf))
-    torch.save(z, '%s/z_opt.pth' % (opt.outf))
+def save_networks(paramsG,paramsD,z,opt):
+    pickle_save(paramsG, '%s/netG.pth' % (opt.outf))
+    pickle_save(paramsD, '%s/netD.pth' % (opt.outf))
+    pickle_save(z, '%s/z_opt.pth' % (opt.outf))
 
 def adjust_scales2image(real_,opt):
     #opt.num_scales = int((math.log(math.pow(opt.min_size / (real_.shape[2]), 1), opt.scale_factor_init))) + 1
@@ -226,6 +222,14 @@ def creat_reals_pyramid(real,reals,opt):
         reals.append(curr_real)
     return reals
 
+def pickle_load(filepath):
+    with open(filepath, 'rb') as fp:
+        fl = pickle.load(fp)
+    return fl
+
+def pickle_save(filepath, obj):
+    with open(filepath, 'wb') as fp:
+        pickle.dump(obj, fp)
 
 def load_trained_pyramid(opt, mode_='train'):
     #dir = 'TrainedModels/%s/scale_factor=%f' % (opt.input_name[:-4], opt.scale_factor_init)
@@ -235,10 +239,10 @@ def load_trained_pyramid(opt, mode_='train'):
         opt.mode = mode
     dir = generate_dir2save(opt)
     if(os.path.exists(dir)):
-        Gs = torch.load('%s/Gs.pth' % dir)
-        Zs = torch.load('%s/Zs.pth' % dir)
-        reals = torch.load('%s/reals.pth' % dir)
-        NoiseAmp = torch.load('%s/NoiseAmp.pth' % dir)
+        Gs = pickle_load('%s/Gs.pth' % dir)
+        Zs = pickle_load('%s/Zs.pth' % dir)
+        reals = pickle_load('%s/reals.pth' % dir)
+        NoiseAmp = pickle_load('%s/NoiseAmp.pth' % dir)
     else:
         print('no appropriate trained model is exist, please train first')
     opt.mode = mode
@@ -248,7 +252,7 @@ def generate_in2coarsest(reals,scale_v,scale_h,opt):
     real = reals[opt.gen_start_scale]
     real_down = upsampling(real, scale_v * real.shape[2], scale_h * real.shape[3])
     if opt.gen_start_scale == 0:
-        in_s = torch.full(real_down.shape, 0, device=opt.device)
+        in_s = jax.device_put(jnp.zeros(real_down.shape), device=opt.device)
     else: #if n!=0
         in_s = upsampling(real_down, real_down.shape[2], real_down.shape[3])
     return in_s
@@ -281,7 +285,8 @@ def generate_dir2save(opt):
 
 def post_config(opt):
     # init fixed parameters
-    opt.device = torch.device("cpu" if opt.not_cuda else "cuda:0")
+    devices = jax.devices()
+    opt.device = devices("cpu" if opt.not_cuda else "gpu")[0]
     opt.niter_init = opt.niter
     opt.noise_amp_init = opt.noise_amp
     opt.nfc_init = opt.nfc
@@ -291,12 +296,13 @@ def post_config(opt):
     if opt.mode == 'SR':
         opt.alpha = 100
 
+    
     if opt.manualSeed is None:
-        opt.manualSeed = random.randint(1, 10000)
+        opt.manualSeed = std_random.randint(1, 10000)
     print("Random Seed: ", opt.manualSeed)
-    random.seed(opt.manualSeed)
-    torch.manual_seed(opt.manualSeed)
-    if torch.cuda.is_available() and opt.not_cuda:
+    opt.PRNGKey = random.PRNGKey(opt.manualSeed)
+    std_random.seed(opt.manualSeed)
+    if str(devices[0]).startswith('gpu'): and opt.not_cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
     return opt
 
@@ -312,10 +318,8 @@ def quant(prev,device):
     labels = kmeans.labels_
     centers = kmeans.cluster_centers_
     x = centers[labels]
-    x = torch.from_numpy(x)
+    x = jnp.asarray(x)
     x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor) if () else x.type(torch.FloatTensor)
-    #x = x.type(torch.FloatTensor.to(device))
     x = x.view(prev.shape)
     return x,centers
 
@@ -325,10 +329,8 @@ def quant2centers(paint, centers):
     labels = kmeans.labels_
     #centers = kmeans.cluster_centers_
     x = centers[labels]
-    x = torch.from_numpy(x)
+    x = jnp.asarray(x)
     x = move_to_gpu(x)
-    x = x.type(torch.cuda.FloatTensor) if torch.cuda.is_available() else x.type(torch.FloatTensor)
-    #x = x.type(torch.cuda.FloatTensor)
     x = x.view(paint.shape)
     return x
 
@@ -340,13 +342,13 @@ def dilate_mask(mask,opt):
         element = morphology.disk(radius=7)
     if opt.mode == "editing":
         element = morphology.disk(radius=20)
-    mask = torch2uint8(mask)
+    mask = jax2uint8(mask)
     mask = mask[:,:,0]
     mask = morphology.binary_dilation(mask,selem=element)
     mask = filters.gaussian(mask, sigma=5)
     nc_im = opt.nc_im
     opt.nc_im = 1
-    mask = np2torch(mask,opt)
+    mask = np2jax(mask,opt)
     opt.nc_im = nc_im
     mask = mask.expand(1, 3, mask.shape[2], mask.shape[3])
     plt.imsave('%s/%s_mask_dilated.png' % (opt.ref_dir, opt.ref_name[:-4]), convert_image_np(mask), vmin=0,vmax=1)
@@ -354,3 +356,48 @@ def dilate_mask(mask,opt):
     return mask
 
 
+
+
+
+
+
+
+def interpolate_bilinear(im, rows, cols):
+
+  # based on http://stackoverflow.com/a/12729229
+  col_lo = np.floor(cols).astype(int)
+  col_hi = col_lo + 1
+  row_lo = np.floor(rows).astype(int)
+  row_hi = row_lo + 1
+
+  nrows, ncols = im.shape[-3:-1]
+  def cclip(cols): return np.clip(cols, 0, ncols - 1)
+  def rclip(rows): return np.clip(rows, 0, nrows - 1)
+  Ia = im[..., rclip(row_lo), cclip(col_lo), :]
+  Ib = im[..., rclip(row_hi), cclip(col_lo), :]
+  Ic = im[..., rclip(row_lo), cclip(col_hi), :]
+  Id = im[..., rclip(row_hi), cclip(col_hi), :]
+
+  wa = np.expand_dims((col_hi - cols) * (row_hi - rows), -1)
+  wb = np.expand_dims((col_hi - cols) * (rows - row_lo), -1)
+  wc = np.expand_dims((cols - col_lo) * (row_hi - rows), -1)
+  wd = np.expand_dims((cols - col_lo) * (rows - row_lo), -1)
+
+  return wa*Ia + wb*Ib + wc*Ic + wd*Id
+
+
+def upsampling(img,sx, sy):
+   nrows, ncols = img.shape[-3:-1]
+   delta_x = 0.5/sx
+   delta_y = 0.5/sy
+
+   rows = np.linspace(delta_y,nrows-delta_y, np.int32(sy*nrows))
+   cols = np.linspace(delta_x,ncols-delta_x, np.int32(sx*ncols))
+   ROWS, COLS = np.meshgrid(rows,cols,indexing='ij')
+   
+   img_resize_vec = interpolate_bilinear(img, ROWS.flatten(), COLS.flatten())
+   img_resize =  img_resize_vec.reshape(img.shape[:-3] + 
+                                        (len(rows),len(cols)) + 
+                                       img.shape[-1:])
+   
+   return img_resize
