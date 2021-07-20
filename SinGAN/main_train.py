@@ -1,5 +1,5 @@
 from config import get_arguments
-from SinGAN.manipulate import *
+# from SinGAN.manipulate import *
 from SinGAN.training import *
 import SinGAN.functions as functions
 
@@ -17,14 +17,14 @@ if __name__ == '__main__':
     NoiseAmp = []
     dir2save = functions.generate_dir2save(opt)
 
-    if (os.path.exists(dir2save)):
-        print('trained model already exist')
-    else:
-        try:
-            os.makedirs(dir2save)
-        except OSError:
-            pass
-        real = functions.read_image(opt)
-        functions.adjust_scales2image(real, opt)
-        train(opt, Gs, Zs, reals, NoiseAmp)
-        SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt)
+    # if (os.path.exists(dir2save)):
+    #     print('trained model already exist')
+    # else:
+    try:
+        os.makedirs(dir2save)
+    except OSError:
+        pass
+    real = functions.read_image(opt)
+    functions.adjust_scales2image(real, opt)
+    train(opt, Gs, Zs, reals, NoiseAmp)
+        # SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt)

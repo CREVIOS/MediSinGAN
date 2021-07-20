@@ -3,3 +3,4 @@ SinGAN/Output/
 SinGAN/TrainedModels/
 **/__pycache__/
 SinGAN/.idea
+**/.ipynb_checkpoints/

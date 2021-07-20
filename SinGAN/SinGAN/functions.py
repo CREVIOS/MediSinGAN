@@ -17,22 +17,12 @@ import os
 import random as std_random
 from sklearn.cluster import KMeans
 import pickle
-
+from SinGAN.utils import *
 
 
 # custom weights initialization called on netG and netD
 
-def read_image(opt):
-    x = img.imread('%s%s' % (opt.input_img,opt.ref_image))
-    return np2jax(x)
 
-def denorm(x):
-    out = (x + 1) / 2
-    return out.clamp(0, 1)
-
-def norm(x):
-    out = (x -0.5) *2
-    return out.clamp(-1, 1)
 
 #def denorm2image(I1,I2):
 #    out = (I1-I1.mean())/(I1.max()-I1.min())
@@ -47,11 +37,11 @@ def convert_image_np(inp):
     if inp.shape[1]==3:
         inp = denorm(inp)
         inp = move_to_cpu(inp[-1,:,:,:])
-        inp = inp.numpy().transpose((1,2,0))
+        inp = np.asarray(inp.transpose((1,2,0)))
     else:
         inp = denorm(inp)
         inp = move_to_cpu(inp[-1,-1,:,:])
-        inp = inp.numpy().transpose((0,1))
+        inp = np.asarray(inp.transpose((0,1)))
         # mean = np.array([x/255.0 for x in [125.3,123.0,113.9]])
         # std = np.array([x/255.0 for x in [63.0,62.1,66.7]])
 
@@ -116,16 +106,7 @@ def reset_grads(model,require_grad):
         p.requires_grad_(require_grad)
     return model
 
-def move_to_gpu(t):
-    devices = jax.devices()
-    if not str(devices[0]).startswith('gpu'):
-        raise SystemError('GPU device not found')
-    t = jax.device_put(t,device=devices[0])
-    return t
 
-def move_to_cpu(t):
-    t = jax.device_put(t,device=jax.devices('cpu')[0])
-    return t
 
 def calc_gradient_penalty(paramsD, netD, key, real_data, fake_data, LAMBDA, device):
     #print real_data.size()
@@ -153,30 +134,6 @@ def read_image_dir(dir,opt):
     x = x[:,0:3,:,:]
     return x
 
-
-def np2jax(x,opt):
-    if opt.nc_im == 3:
-        x = x[:,:,:,None]
-        x = x.transpose((3, 2, 0, 1))/255
-    else:
-        x = color.rgb2gray(x)
-        x = x[:,:,None,None]
-        x = x.transpose(3, 2, 0, 1)
-    x = jnp.asarray(x)
-    if not(opt.not_cuda):
-        x = move_to_gpu(x)
-   
-    x = norm(x)
-    return x
-
-
-def jax2uint8(x):
-    x = x[0,:,:,:]
-    x = x.transpose((1,2,0))
-    x = 255*denorm(x)
-    x = np.array(x)
-    x = x.astype(np.uint8)
-    return x
 
 def read_image2np(opt):
     x = img.imread('%s/%s' % (opt.input_dir,opt.input_name))
@@ -285,8 +242,10 @@ def generate_dir2save(opt):
 
 def post_config(opt):
     # init fixed parameters
-    devices = jax.devices()
-    opt.device = devices("cpu" if opt.not_cuda else "gpu")[0]
+    print(jax.devices())
+    devices = jax.devices(backend="cpu" if opt.not_cuda else "gpu")
+    
+    opt.device = devices[0]
     opt.niter_init = opt.niter
     opt.noise_amp_init = opt.noise_amp
     opt.nfc_init = opt.nfc
@@ -302,7 +261,7 @@ def post_config(opt):
     print("Random Seed: ", opt.manualSeed)
     opt.PRNGKey = random.PRNGKey(opt.manualSeed)
     std_random.seed(opt.manualSeed)
-    if str(devices[0]).startswith('gpu'): and opt.not_cuda:
+    if str(devices[0]).startswith('gpu') and opt.not_cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
     return opt
 

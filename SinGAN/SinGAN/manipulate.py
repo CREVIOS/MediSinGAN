@@ -27,7 +27,7 @@ def generate_gif(Gs,Zs,reals,NoiseAmp,opt,alpha=0.1,beta=0.9,start_scale=2,fps=1
     count = 0
 
     for G,Z_opt,noise_amp,real in zip(Gs,Zs,NoiseAmp,reals):
-        pad_image = int(((opt.ker_size - 1) * opt.num_layer) / 2)
+        pad_image = int(((opt.kernel_size - 1) * opt.num_layer) / 2)
         nzx = Z_opt.shape[2]
         nzy = Z_opt.shape[3]
         #pad_noise = 0
@@ -92,7 +92,7 @@ def SinGAN_generate(Gs,Zs,reals,NoiseAmp,opt,in_s=None,scale_v=1,scale_h=1,n=0,g
         in_s = torch.full(reals[0].shape, 0, device=opt.device)
     images_cur = []
     for G,Z_opt,noise_amp in zip(Gs,Zs,NoiseAmp):
-        pad1 = ((opt.ker_size-1)*opt.num_layer)/2
+        pad1 = ((opt.kernel_size-1)*opt.num_layer)/2
         m = nn.ZeroPad2d(int(pad1))
         nzx = (Z_opt.shape[2]-pad1*2)*scale_v
         nzy = (Z_opt.shape[3]-pad1*2)*scale_h

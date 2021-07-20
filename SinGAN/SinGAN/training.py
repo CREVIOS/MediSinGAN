@@ -1,9 +1,15 @@
 import SinGAN.functions as functions
 import SinGAN.models as models
 import os
-import torch.nn as nn
-import torch.optim as optim
-import torch.utils.data
+
+import jax
+from jax import lax, random, numpy as jnp
+from jax import grad, jit, vmap
+import flax
+from flax import linen as nn
+# import torch.nn as nn
+# import torch.optim as optim
+# import torch.utils.data
 import math
 import matplotlib.pyplot as plt
 from SinGAN.imresize import imresize
@@ -31,30 +37,26 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         #plt.imsave('%s/original.png' %  (opt.out_), functions.convert_image_np(real_), vmin=0, vmax=1)
         plt.imsave('%s/real_scale.png' %  (opt.outf), functions.convert_image_np(reals[scale_num]), vmin=0, vmax=1)
 
-        D_curr,G_curr = init_models(opt)
-        if (nfc_prev==opt.nfc):
-            G_curr.load_state_dict(torch.load('%s/%d/netG.pth' % (opt.out_,scale_num-1)))
-            D_curr.load_state_dict(torch.load('%s/%d/netD.pth' % (opt.out_,scale_num-1)))
+        D_curr, D_params, G_curr, G_params = init_models(opt,reals[scale_num].shape)
+        # if (nfc_prev==opt.nfc):
+        #     G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1)))
+        #     D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1)))
 
-        z_curr,in_s,G_curr = train_single_scale(D_curr,G_curr,reals,Gs,Zs,in_s,NoiseAmp,opt)
+        # z_curr,in_s,G_curr = train_single_scale(D_curr,G_curr,reals,Gs,Zs,in_s,NoiseAmp,opt)
 
-        G_curr = functions.reset_grads(G_curr,False)
-        G_curr.eval()
-        D_curr = functions.reset_grads(D_curr,False)
-        D_curr.eval()
 
-        Gs.append(G_curr)
-        Zs.append(z_curr)
-        NoiseAmp.append(opt.noise_amp)
+        # Gs.append(G_curr)
+        # Zs.append(z_curr)
+        # NoiseAmp.append(opt.noise_amp)
 
-        torch.save(Zs, '%s/Zs.pth' % (opt.out_))
-        torch.save(Gs, '%s/Gs.pth' % (opt.out_))
-        torch.save(reals, '%s/reals.pth' % (opt.out_))
-        torch.save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
+        # torch.save(Zs, '%s/Zs.pth' % (opt.out_))
+        # torch.save(Gs, '%s/Gs.pth' % (opt.out_))
+        # torch.save(reals, '%s/reals.pth' % (opt.out_))
+        # torch.save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
 
-        scale_num+=1
-        nfc_prev = opt.nfc
-        del D_curr,G_curr
+        # scale_num+=1
+        # nfc_prev = opt.nfc
+        # del D_curr,G_curr
     return
 
 
@@ -62,14 +64,14 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
 
     real = reals[len(Gs)]
-    opt.nzx = real.shape[2]#+(opt.ker_size-1)*(opt.num_layer)
-    opt.nzy = real.shape[3]#+(opt.ker_size-1)*(opt.num_layer)
-    opt.receptive_field = opt.ker_size + ((opt.ker_size-1)*(opt.num_layer-1))*opt.stride
-    pad_noise = int(((opt.ker_size - 1) * opt.num_layer) / 2)
-    pad_image = int(((opt.ker_size - 1) * opt.num_layer) / 2)
+    opt.nzx = real.shape[2]#+(opt.kernel_size-1)*(opt.num_layer)
+    opt.nzy = real.shape[3]#+(opt.kernel_size-1)*(opt.num_layer)
+    opt.receptive_field = opt.kernel_size + ((opt.kernel_size-1)*(opt.num_layer-1))*opt.stride
+    pad_noise = int(((opt.kernel_size - 1) * opt.num_layer) / 2)
+    pad_image = int(((opt.kernel_size - 1) * opt.num_layer) / 2)
     if opt.mode == 'animation_train':
-        opt.nzx = real.shape[2]+(opt.ker_size-1)*(opt.num_layer)
-        opt.nzy = real.shape[3]+(opt.ker_size-1)*(opt.num_layer)
+        opt.nzx = real.shape[2]+(opt.kernel_size-1)*(opt.num_layer)
+        opt.nzy = real.shape[3]+(opt.kernel_size-1)*(opt.num_layer)
         pad_noise = 0
     m_noise = nn.ZeroPad2d(int(pad_noise))
     m_image = nn.ZeroPad2d(int(pad_image))
@@ -93,7 +95,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
     z_opt2plot = []
 
     for epoch in range(opt.niter):
-        if (Gs == []) & (opt.mode != 'SR_train'):
+        if (Gs == []):
             z_opt = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
             z_opt = m_noise(z_opt.expand(1,3,opt.nzx,opt.nzy))
             noise_ = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
@@ -117,20 +119,20 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
 
             # train with fake
             if (j==0) & (epoch == 0):
-                if (Gs == []) & (opt.mode != 'SR_train'):
+                if Gs == []:
                     prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
                     in_s = prev
                     prev = m_image(prev)
                     z_prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
                     z_prev = m_noise(z_prev)
                     opt.noise_amp = 1
-                elif opt.mode == 'SR_train':
-                    z_prev = in_s
-                    criterion = nn.MSELoss()
-                    RMSE = torch.sqrt(criterion(real, z_prev))
-                    opt.noise_amp = opt.noise_amp_init * RMSE
-                    z_prev = m_image(z_prev)
-                    prev = z_prev
+                # elif opt.mode == 'SR_train':
+                #     z_prev = in_s
+                #     criterion = nn.MSELoss()
+                #     RMSE = torch.sqrt(criterion(real, z_prev))
+                #     opt.noise_amp = opt.noise_amp_init * RMSE
+                #     z_prev = m_image(z_prev)
+                #     prev = z_prev
                 else:
                     prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
                     prev = m_image(prev)
@@ -223,7 +225,7 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
     if len(Gs) > 0:
         if mode == 'rand':
             count = 0
-            pad_noise = int(((opt.ker_size-1)*opt.num_layer)/2)
+            pad_noise = int(((opt.kernel_size-1)*opt.num_layer)/2)
             if opt.mode == 'animation_train':
                 pad_noise = 0
             for G,Z_opt,real_curr,real_next,noise_amp in zip(Gs,Zs,reals,reals[1:],NoiseAmp):
@@ -254,69 +256,74 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 count += 1
     return G_z
 
-def train_paint(opt,Gs,Zs,reals,NoiseAmp,centers,paint_inject_scale):
-    in_s = torch.full(reals[0].shape, 0, device=opt.device)
-    scale_num = 0
-    nfc_prev = 0
+# def train_paint(opt,Gs,Zs,reals,NoiseAmp,centers,paint_inject_scale):
+#     in_s = torch.full(reals[0].shape, 0, device=opt.device)
+#     scale_num = 0
+#     nfc_prev = 0
 
-    while scale_num<opt.stop_scale+1:
-        if scale_num!=paint_inject_scale:
-            scale_num += 1
-            nfc_prev = opt.nfc
-            continue
-        else:
-            opt.nfc = min(opt.nfc_init * pow(2, math.floor(scale_num / 4)), 128)
-            opt.min_nfc = min(opt.min_nfc_init * pow(2, math.floor(scale_num / 4)), 128)
+#     while scale_num<opt.stop_scale+1:
+#         if scale_num!=paint_inject_scale:
+#             scale_num += 1
+#             nfc_prev = opt.nfc
+#             continue
+#         else:
+#             opt.nfc = min(opt.nfc_init * pow(2, math.floor(scale_num / 4)), 128)
+#             opt.min_nfc = min(opt.min_nfc_init * pow(2, math.floor(scale_num / 4)), 128)
 
-            opt.out_ = functions.generate_dir2save(opt)
-            opt.outf = '%s/%d' % (opt.out_,scale_num)
-            try:
-                os.makedirs(opt.outf)
-            except OSError:
-                    pass
+#             opt.out_ = functions.generate_dir2save(opt)
+#             opt.outf = '%s/%d' % (opt.out_,scale_num)
+#             try:
+#                 os.makedirs(opt.outf)
+#             except OSError:
+#                     pass
 
-            #plt.imsave('%s/in.png' %  (opt.out_), functions.convert_image_np(real), vmin=0, vmax=1)
-            #plt.imsave('%s/original.png' %  (opt.out_), functions.convert_image_np(real_), vmin=0, vmax=1)
-            plt.imsave('%s/in_scale.png' %  (opt.outf), functions.convert_image_np(reals[scale_num]), vmin=0, vmax=1)
+#             #plt.imsave('%s/in.png' %  (opt.out_), functions.convert_image_np(real), vmin=0, vmax=1)
+#             #plt.imsave('%s/original.png' %  (opt.out_), functions.convert_image_np(real_), vmin=0, vmax=1)
+#             plt.imsave('%s/in_scale.png' %  (opt.outf), functions.convert_image_np(reals[scale_num]), vmin=0, vmax=1)
 
-            D_curr,G_curr = init_models(opt)
+#             D_curr,G_curr = init_models(opt)
 
-            z_curr,in_s,G_curr = train_single_scale(D_curr,G_curr,reals[:scale_num+1],Gs[:scale_num],Zs[:scale_num],in_s,NoiseAmp[:scale_num],opt,centers=centers)
+#             z_curr,in_s,G_curr = train_single_scale(D_curr,G_curr,reals[:scale_num+1],Gs[:scale_num],Zs[:scale_num],in_s,NoiseAmp[:scale_num],opt,centers=centers)
 
-            G_curr = functions.reset_grads(G_curr,False)
-            G_curr.eval()
-            D_curr = functions.reset_grads(D_curr,False)
-            D_curr.eval()
+#             G_curr = functions.reset_grads(G_curr,False)
+#             G_curr.eval()
+#             D_curr = functions.reset_grads(D_curr,False)
+#             D_curr.eval()
 
-            Gs[scale_num] = G_curr
-            Zs[scale_num] = z_curr
-            NoiseAmp[scale_num] = opt.noise_amp
+#             Gs[scale_num] = G_curr
+#             Zs[scale_num] = z_curr
+#             NoiseAmp[scale_num] = opt.noise_amp
 
-            torch.save(Zs, '%s/Zs.pth' % (opt.out_))
-            torch.save(Gs, '%s/Gs.pth' % (opt.out_))
-            torch.save(reals, '%s/reals.pth' % (opt.out_))
-            torch.save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
+#             torch.save(Zs, '%s/Zs.pth' % (opt.out_))
+#             torch.save(Gs, '%s/Gs.pth' % (opt.out_))
+#             torch.save(reals, '%s/reals.pth' % (opt.out_))
+#             torch.save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
 
-            scale_num+=1
-            nfc_prev = opt.nfc
-        del D_curr,G_curr
-    return
+#             scale_num+=1
+#             nfc_prev = opt.nfc
+#         del D_curr,G_curr
+#     return
 
 
-def init_models(opt):
-
+def init_models(opt, img_shape):
+    opt.PRNGKey, subkey = jax.random.split(opt.PRNGKey)
     #generator initialization:
-    netG = models.GeneratorConcatSkip2CleanAdd(opt).to(opt.device)
-    netG.apply(models.weights_init)
+    netG = models.GeneratorConcatSkip2CleanAdd(opt)
+    paramsG = netG.init(subkey, jnp.ones(img_shape))['params']
+     
+    
+    # netG.apply(models.weights_init)
     if opt.netG != '':
-        netG.load_state_dict(torch.load(opt.netG))
+        paramsG = functions.pickle_load(opt.netG)
     print(netG)
 
+    opt.PRNGKey, subkey = jax.random.split(opt.PRNGKey)
     #discriminator initialization:
-    netD = models.WDiscriminator(opt).to(opt.device)
-    netD.apply(models.weights_init)
+    netD = models.WDiscriminator(opt)
+    paramsD = netD.init(subkey, jnp.ones(img_shape))['params']
+    # netD.apply(models.weights_init)
     if opt.netD != '':
-        netD.load_state_dict(torch.load(opt.netD))
+        paramsD = functions.pickle_load(opt.netD)
     print(netD)
 
-    return netD, netG
+    return netD, paramsD, netG, paramsG
