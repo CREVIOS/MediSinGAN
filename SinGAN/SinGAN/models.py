@@ -55,16 +55,10 @@ class ConvBlock(nn.Module):
 
 
 class WDiscriminator(nn.Module):
-    is_cuda: bool
     opt: Any
 
 
     def setup(self):
-        devices = jax.devices()
-        if not str(devices[0]).startswith('gpu'):
-            raise SystemError('GPU device not found')
-        print('Found GPU at: {}'.format(devices[0]))
-
         N = int(self.opt.nfc)
         self.head = ConvBlock(N,kernel_size=self.opt.kernel_size,strides=1,padding=self.opt.padding_size, dim=2)
         body = []
