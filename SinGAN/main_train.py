@@ -1,3 +1,7 @@
+import os
+# os.environ["LD_LIBRARY_PATH"] = f"{os.environ['CONDA_PREFIX']}/lib:" + os.environ["LD_LIBRARY_PATH"]
+# print(os.environ["LD_LIBRARY_PATH"])
+
 from config import get_arguments
 # from SinGAN.manipulate import *
 from SinGAN.training import *

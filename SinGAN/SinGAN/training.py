@@ -38,6 +38,8 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         plt.imsave('%s/real_scale.png' %  (opt.outf), functions.convert_image_np(reals[scale_num]), vmin=0, vmax=1)
 
         D_curr, D_params, G_curr, G_params = init_models(opt,reals[scale_num].shape)
+        print(D_curr, D_params)
+        print(G_curr, G_params)
         # if (nfc_prev==opt.nfc):
         #     G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1)))
         #     D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1)))
@@ -309,7 +311,7 @@ def init_models(opt, img_shape):
     opt.PRNGKey, subkey = jax.random.split(opt.PRNGKey)
     #generator initialization:
     netG = models.GeneratorConcatSkip2CleanAdd(opt)
-    paramsG = netG.init(subkey, jnp.ones(img_shape))['params']
+    paramsG = netG.init(subkey, jnp.ones(img_shape), jnp.ones(img_shape))['params']
      
     
     # netG.apply(models.weights_init)

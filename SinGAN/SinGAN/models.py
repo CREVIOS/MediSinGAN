@@ -20,16 +20,12 @@ def weights_init(m):
 
 
 class Sequential(nn.Module):
-  modules: list = field(default_factory=lambda: [])
+    modules: List[nn.Module] # = field(default_factory=list)
 
-  def add_module(self, new_module:nn.Module) -> None:
-    print(self.modules)
-    self.modules.append(new_module)
-
-  def __call__(self, x):
-    for module in modules:
-        x = module(x)
-    return x
+    def __call__(self, x):
+        for module in modules:
+            x = module(x)
+        return x
 
 
 class ActivationLayer(nn.Module):
@@ -39,27 +35,23 @@ class ActivationLayer(nn.Module):
     def __call__(self, x):
         return self.activation(x)
 
-class ConvBlockBase(nn.Module):
+class ConvBlock(nn.Module):
     out_channel: int
     kernel_size: int
     padding: Union[str, Tuple[int, int]]
     strides: int
     dim: int
-
-class ConvBlock(Sequential, ConvBlockBase):
-    # out_channel: int
-    # kernel_size: int
-    # padding: Union[str, Tuple[int, int]]
-    # stride: int
-    # dim: int
-  
-    def setup(self):
-        self.kernel_size=(self.kernel_size for i in range(0,dim))
-        self.strides=(self.strides for i in range(0,dim))
-        self.padding = self.padding if isinstance(self.padding, str) else (self.padding for i in range(0,dim))
-        self.add_module(nn.Conv(out_channel,kernel_size=self.kernel_size,strides=self.strides,padding=self.padding, name='conv')),
-        self.add_module(nn.BatchNorm(name="norm")),
-        self.add_module(ActivationLayer(activation=lambda x : nn.leaky_relu(x, 0.2)))
+    
+    @nn.compact
+    def __call__(self, x):
+        kernel_size=[self.kernel_size for i in range(0,self.dim)]
+        strides=[self.strides for i in range(0,self.dim)]
+        padding = self.padding if isinstance(self.padding, str) else [[self.padding, self.padding] for i in range(0,self.dim)]
+        print(kernel_size, strides, padding)
+        x = nn.Conv(self.out_channel,kernel_size=kernel_size,strides=strides,padding=padding, name='conv')(x)
+        x = nn.BatchNorm(name="norm")(x)
+        x = nn.leaky_relu(x, 0.2)
+        return x
 
 
 class WDiscriminator(nn.Module):
@@ -75,11 +67,12 @@ class WDiscriminator(nn.Module):
 
         N = int(self.opt.nfc)
         self.head = ConvBlock(N,kernel_size=self.opt.kernel_size,strides=1,padding=self.opt.padding_size, dim=2)
-        self.body = Sequential()
+        body = []
         for i in range(self.opt.num_layer-2):
             N = int(self.opt.nfc/pow(2,(i+1)))
             block = ConvBlock(max(N,self.opt.min_nfc),kernel_size=self.opt.kernel_size,padding=self.opt.padding_size,strides=1, dim=2)
-            self.body.add_module(block)
+            body.append(block)
+        self.body = Sequential(self.body)
         padding = self.opt.padding_size if isinstance(self.opt.padding_size, str) else (self.opt.padding_size, self.opt.padding_size)
         self.tail = nn.Conv(1,kernel_size=(self.opt.kernel_size, self.opt.kernel_size),strides=(1,1),padding=padding)
 
@@ -101,11 +94,12 @@ class GeneratorConcatSkip2CleanAdd(nn.Module):
 
         N = self.opt.nfc
         self.head = ConvBlock(N,kernel_size=self.opt.kernel_size,padding=self.opt.padding_size,strides=1, dim=2) #GenConvTransBlock(self.opt.nc_z,N,opt.kernel_size,opt.padding_size,opt.stride)
-        self.body = Sequential()
+        body = []
         for i in range(self.opt.num_layer-2):
             N = int(self.opt.nfc/pow(2,(i+1)))
             block = ConvBlock(max(N,self.opt.min_nfc),kernel_size=self.opt.kernel_size,padding=self.opt.padding_size,strides=1, dim=2)
-            self.body.add_module(block)
+            body.append(block)
+        self.body = Sequential(body)
         padding = self.opt.padding_size if isinstance(self.opt.padding_size, str) else (self.opt.padding_size, self.opt.padding_size)
         self.tail = Sequential(modules=[
             nn.Conv(self.opt.nc_im,kernel_size=(self.opt.kernel_size, self.opt.kernel_size),strides=(1,1),padding=padding),
