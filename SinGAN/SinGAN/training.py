@@ -7,6 +7,7 @@ from jax import lax, random, numpy as jnp
 from jax import grad, jit, vmap
 import flax
 from flax import linen as nn
+from flax.training import train_state
 # import torch.nn as nn
 # import torch.optim as optim
 # import torch.utils.data
@@ -40,30 +41,54 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         D_curr, D_params, G_curr, G_params = init_models(opt,reals[scale_num].shape)
         print(D_curr, D_params)
         print(G_curr, G_params)
-        # if (nfc_prev==opt.nfc):
-        #     G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1)))
-        #     D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1)))
+        if (nfc_prev==opt.nfc):
+            G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1)))
+            D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1)))
 
-        # z_curr,in_s,G_curr = train_single_scale(D_curr,G_curr,reals,Gs,Zs,in_s,NoiseAmp,opt)
+        z_curr,in_s,G_curr = train_single_scale(D_curr,D_params, G_curr, G_params,reals,Gs,Zs,in_s,NoiseAmp,opt)
 
 
-        # Gs.append(G_curr)
-        # Zs.append(z_curr)
-        # NoiseAmp.append(opt.noise_amp)
+        Gs.append(G_curr)
+        Zs.append(z_curr)
+        NoiseAmp.append(opt.noise_amp)
 
-        # torch.save(Zs, '%s/Zs.pth' % (opt.out_))
-        # torch.save(Gs, '%s/Gs.pth' % (opt.out_))
-        # torch.save(reals, '%s/reals.pth' % (opt.out_))
-        # torch.save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
+        functions.pickle_save(Zs, '%s/Zs.pth' % (opt.out_))
+        functions.pickle_save(Gs, '%s/Gs.pth' % (opt.out_))
+        functions.pickle_save(reals, '%s/reals.pth' % (opt.out_))
+        functions.pickle_save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
 
-        # scale_num+=1
-        # nfc_prev = opt.nfc
-        # del D_curr,G_curr
+        scale_num+=1
+        nfc_prev = opt.nfc
+        del D_curr,G_curr
     return
 
+def discriminator_loss(paramsD, netD,fake, real, prev, opt):
+    output = netD().apply({'params': paramsD}, real)
+    errD_real = -output.mean()#-a
+    D_x = -errD_real.item()
 
 
-def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
+    errD_fake = output.mean()
+    D_G_z = output.mean().item()
+
+    gradient_penalty, opt.PRNGKey = functions.calc_gradient_penalty(paramsD, netD, opt.PRNGKey,opt.real, fake, opt.lambda_grad, opt.device)
+
+    return errD_real + errD_fake + gradient_penalty
+
+def rec_loss(paramsD, netD, paramsG, netG, fake, z_prev, opt):
+    output = netD().apply({'params': paramsD}, fake)
+    #D_fake_map = output.detach()
+    errG = -output.mean()
+    if alpha!=0:
+        mse_loss = lambda x,y: knp.mean((x-y)**2)
+        Z_opt = opt.noise_amp*z_opt+z_prev
+        rec_loss = alpha*mse_loss(netG.apply({'params': paramsG}, z_prev),real)        
+    else:
+        Z_opt = z_opt
+        rec_loss = 0
+    return rec_loss
+
+def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
 
     real = reals[len(Gs)]
     opt.nzx = real.shape[2]#+(opt.kernel_size-1)*(opt.num_layer)
@@ -75,20 +100,28 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
         opt.nzx = real.shape[2]+(opt.kernel_size-1)*(opt.num_layer)
         opt.nzy = real.shape[3]+(opt.kernel_size-1)*(opt.num_layer)
         pad_noise = 0
-    m_noise = nn.ZeroPad2d(int(pad_noise))
-    m_image = nn.ZeroPad2d(int(pad_image))
+    m_noise = lambda arr: (jnp.pad(arr, ((0,0), (0,0), (pad_noise,pad_noise), (pad_noise,pad_noise)))) 
+    m_image = lambda arr: (jnp.pad(arr, ((0,0), (0,0), (pad_image,pad_image), (pad_image,pad_image))))
 
     alpha = opt.alpha
 
     fixed_noise,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy],device=opt.device)
-    z_opt = torch.full(fixed_noise.shape, 0, device=opt.device)
+    z_opt = jnp.zeros(fixed_noise.shape)
     z_opt = m_noise(z_opt)
 
     # setup optimizer
-    optimizerD = optim.Adam(netD.parameters(), lr=opt.lr_d, betas=(opt.beta1, 0.999))
-    optimizerG = optim.Adam(netG.parameters(), lr=opt.lr_g, betas=(opt.beta1, 0.999))
-    schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerD,milestones=[1600],gamma=opt.gamma)
-    schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerG,milestones=[1600],gamma=opt.gamma)
+    optimizerD = flax.optim.Adam(learning_rate=opt.lr_d, beta1=opt.beta1, beta2=0.999)
+    optimizerG = flax.optim.Adam(learning_rate=opt.lr_g, beta1=opt.beta1, beta2 = 0.999)
+    
+    stateD = train_state.TrainState.create(
+      apply_fn=netD.apply, params=paramsD, tx=optimizerD)
+
+    stateG = train_state.TrainState.create(
+      apply_fn=netG.apply, params=paramsG, tx=optimizerG)
+
+    # TODO
+    # schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerD,milestones=[1600],gamma=opt.gamma)
+    # schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerG,milestones=[1600],gamma=opt.gamma)
 
     errD2plot = []
     errG2plot = []
@@ -110,22 +143,21 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
         # (1) Update D network: maximize D(x) + D(G(z))
         ###########################
         for j in range(opt.Dsteps):
-            # train with real
-            netD.zero_grad()
+            # # train with real
 
-            output = netD(real).to(opt.device)
-            #D_real_map = output.detach()
-            errD_real = -output.mean()#-a
-            errD_real.backward(retain_graph=True)
-            D_x = -errD_real.item()
+            # output = netD().apply({'params': paramsD}, real)
+            # #D_real_map = output.detach()
+            # errD_real = -output.mean()#-a
+            # errD_real.backward(retain_graph=True)
+            # D_x = -errD_real.item()
 
             # train with fake
             if (j==0) & (epoch == 0):
                 if Gs == []:
-                    prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
+                    prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
                     in_s = prev
                     prev = m_image(prev)
-                    z_prev = torch.full([1,opt.nc_z,opt.nzx,opt.nzy], 0, device=opt.device)
+                    z_prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
                     z_prev = m_noise(z_prev)
                     opt.noise_amp = 1
                 # elif opt.mode == 'SR_train':
@@ -147,25 +179,25 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
                 prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
                 prev = m_image(prev)
 
-            if opt.mode == 'paint_train':
-                prev = functions.quant2centers(prev,centers)
-                plt.imsave('%s/prev.png' % (opt.outf), functions.convert_image_np(prev), vmin=0, vmax=1)
-
             if (Gs == []) & (opt.mode != 'SR_train'):
                 noise = noise_
             else:
                 noise = opt.noise_amp*noise_+prev
 
-            fake = netG(noise.detach(),prev)
-            output = netD(fake.detach())
-            errD_fake = output.mean()
-            errD_fake.backward(retain_graph=True)
-            D_G_z = output.mean().item()
+            # fake = netG(noise.detach(),prev)
+            # output = netD(fake.detach())
+            # errD_fake = output.mean()
+            # errD_fake.backward(retain_graph=True)
+            # D_G_z = output.mean().item()
 
-            gradient_penalty = functions.calc_gradient_penalty(netD, real, fake, opt.lambda_grad, opt.device)
-            gradient_penalty.backward()
+            # gradient_penalty = functions.calc_gradient_penalty(netD, real, fake, opt.lambda_grad, opt.device)
+            # gradient_penalty.backward()
 
-            errD = errD_real + errD_fake + gradient_penalty
+            # errD = errD_real + errD_fake + gradient_penalty
+
+            fake = stateG.apply_fn({'params': stateG.params}, prev)
+            grads = jax.grad(discriminator_loss)(stateD.params,netD,fake,real, prev, opt)
+            stateD = stateD.apply_gradients(grads=grads)
             optimizerD.step()
 
         errD2plot.append(errD.detach())
@@ -175,30 +207,30 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
         ###########################
 
         for j in range(opt.Gsteps):
-            netG.zero_grad()
-            output = netD(fake)
-            #D_fake_map = output.detach()
-            errG = -output.mean()
-            errG.backward(retain_graph=True)
-            if alpha!=0:
-                loss = nn.MSELoss()
-                if opt.mode == 'paint_train':
-                    z_prev = functions.quant2centers(z_prev, centers)
-                    plt.imsave('%s/z_prev.png' % (opt.outf), functions.convert_image_np(z_prev), vmin=0, vmax=1)
-                Z_opt = opt.noise_amp*z_opt+z_prev
-                rec_loss = alpha*loss(netG(Z_opt.detach(),z_prev),real)
-                rec_loss.backward(retain_graph=True)
-                rec_loss = rec_loss.detach()
-            else:
-                Z_opt = z_opt
-                rec_loss = 0
+            # netG.zero_grad()
+            # output = netD(fake)
+            # #D_fake_map = output.detach()
+            # errG = -output.mean()
+            # if alpha!=0:
+            #     loss = nn.MSELoss()
+            #     Z_opt = opt.noise_amp*z_opt+z_prev
+            #     rec_loss = alpha*loss(netG(Z_opt.detach(),z_prev),real)
+            #     rec_loss.backward(retain_graph=True)
+            #     rec_loss = rec_loss.detach()
+            # else:
+            #     Z_opt = z_opt
+            #     rec_loss = 0
+
+            
+            grads = jax.grad(rec_loss)(stateD.params, netD, stateG.params, netG, fake, z_prev, opt)
+            stateG = stateG.apply_gradients(grads=grads)
 
             optimizerG.step()
 
-        errG2plot.append(errG.detach()+rec_loss)
-        D_real2plot.append(D_x)
-        D_fake2plot.append(D_G_z)
-        z_opt2plot.append(rec_loss)
+        # errG2plot.append(errG.detach()+rec_loss)
+        # D_real2plot.append(D_x)
+        # D_fake2plot.append(D_G_z)
+        # z_opt2plot.append(rec_loss)
 
         if epoch % 25 == 0 or epoch == (opt.niter-1):
             print('scale %d:[%d/%d]' % (len(Gs), epoch, opt.niter))
@@ -214,12 +246,12 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
             #plt.imsave('%s/z_prev.png'   % (opt.outf), functions.convert_image_np(z_prev), vmin=0, vmax=1)
 
 
-            torch.save(z_opt, '%s/z_opt.pth' % (opt.outf))
+            functions.pickle_save(z_opt, '%s/z_opt.pth' % (opt.outf))
 
-        schedulerD.step()
-        schedulerG.step()
+        # schedulerD.step()
+        # schedulerG.step()
 
-    functions.save_networks(netG,netD,z_opt,opt)
+    functions.save_networks(stateD.params,stateG.params,z_opt,opt)
     return z_opt,in_s,netG    
 
 def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
@@ -329,3 +361,4 @@ def init_models(opt, img_shape):
     print(netD)
 
     return netD, paramsD, netG, paramsG
+
