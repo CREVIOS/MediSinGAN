@@ -5,6 +5,7 @@ import os
 import jax
 from jax import lax, random, numpy as jnp
 from jax import grad, jit, vmap
+import optax
 import flax
 from flax import linen as nn
 from flax.training import train_state
@@ -39,11 +40,11 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         plt.imsave('%s/real_scale.png' %  (opt.outf), functions.convert_image_np(reals[scale_num]), vmin=0, vmax=1)
 
         D_curr, D_params, G_curr, G_params = init_models(opt,reals[scale_num].shape)
-        print(D_curr, D_params)
-        print(G_curr, G_params)
+#         print(D_curr, D_params)
+#         print(G_curr, G_params)
         if (nfc_prev==opt.nfc):
-            G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1)))
-            D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1)))
+            G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1))
+            D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1))
 
         z_curr,in_s,G_curr = train_single_scale(D_curr,D_params, G_curr, G_params,reals,Gs,Zs,in_s,NoiseAmp,opt)
 
@@ -105,13 +106,15 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
     alpha = opt.alpha
 
-    fixed_noise,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy],device=opt.device)
+    fixed_noise,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
     z_opt = jnp.zeros(fixed_noise.shape)
     z_opt = m_noise(z_opt)
 
     # setup optimizer
-    optimizerD = flax.optim.Adam(learning_rate=opt.lr_d, beta1=opt.beta1, beta2=0.999)
-    optimizerG = flax.optim.Adam(learning_rate=opt.lr_g, beta1=opt.beta1, beta2 = 0.999)
+#     optimizerD = flax.optim.Adam(learning_rate=opt.lr_d, beta1=opt.beta1, beta2=0.999).create(paramsD)
+#     optimizerG = flax.optim.Adam(learning_rate=opt.lr_g, beta1=opt.beta1, beta2 = 0.999).create(paramsG)
+    optimizerD = optax.adam(learning_rate=opt.lr_d, b1=opt.beta1, b2=0.999)
+    optimizerG = optax.adam(learning_rate=opt.lr_g, b1=opt.beta1, b2 = 0.999)
     
     stateD = train_state.TrainState.create(
       apply_fn=netD.apply, params=paramsD, tx=optimizerD)
@@ -131,12 +134,12 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
     for epoch in range(opt.niter):
         if (Gs == []):
-            z_opt,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy], device=opt.device)
+            z_opt,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
             z_opt = m_noise(jnp.tile(z_opt,[1,3,1,1]))
-            noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy], device=opt.device)
+            noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
             noise_ = m_noise(jnp.tile(noise_,[1,3,1,1]))
         else:
-            noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy], device=opt.device)
+            noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
             noise_ = m_noise(noise_)
 
         ############################
@@ -194,8 +197,8 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
             # gradient_penalty.backward()
 
             # errD = errD_real + errD_fake + gradient_penalty
-
-            fake = stateG.apply_fn({'params': stateG.params}, prev)
+            print(f"Noise shape: {noise.shape}, prev shape: {prev.shape}")
+            fake = stateG.apply_fn({'params': stateG.params}, noise, prev)
             grads = jax.grad(discriminator_loss)(stateD.params,netD,fake,real, prev, opt)
             stateD = stateD.apply_gradients(grads=grads)
             optimizerD.step()
@@ -264,10 +267,10 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 pad_noise = 0
             for G,Z_opt,real_curr,real_next,noise_amp in zip(Gs,Zs,reals,reals[1:],NoiseAmp):
                 if count == 0:
-                    z,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1, Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)
+                    z,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1, Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise])
                     z = jnp.tile(z,[1,3,1,1])
                 else:
-                    z,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise], device=opt.device)
+                    z,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise])
                 z = m_noise(z)
                 G_z = G_z[:,:,0:real_curr.shape[2],0:real_curr.shape[3]]
                 G_z = m_image(G_z)

@@ -69,13 +69,17 @@ def convert_image_np_2d(inp):
     # inp = std*
     return inp
 
-def generate_noise(key,size,num_samp=1,device=None,scale=1):
+def generate_noise(key,size,num_samp=1,scale=1):
     key, subkey = random.split(key)
     
-    if device is None:
-        device = jax.devices()[0]
-    noise =  jax.device_put(random.normal(subkey, shape=(num_samp, size[0], round(size[1]/scale), round(size[2]/scale))), device=device)
+    noise = random.normal(subkey, shape=(num_samp, size[0], round(size[1]/scale), round(size[2]/scale)))
+   
+    noise = noise.transpose([0, 2, 3, 1])
+    
     noise = upsampling(noise, size[1], size[2])
+    
+    noise = noise.transpose([0, 3, 1, 2])
+    
 
     return noise, key
 
@@ -242,8 +246,11 @@ def generate_dir2save(opt):
 
 def post_config(opt):
     # init fixed parameters
+    
+    platform = "cpu" if opt.not_cuda else "gpu"
+    jax.config.update('jax_platform_name', platform)
+    devices = jax.devices(backend=platform)
     print(jax.devices())
-    devices = jax.devices(backend="cpu" if opt.not_cuda else "gpu")
     
     opt.device = devices[0]
     opt.niter_init = opt.niter
