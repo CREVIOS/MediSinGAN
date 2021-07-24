@@ -18,7 +18,7 @@ import random as std_random
 from sklearn.cluster import KMeans
 import pickle
 from SinGAN.utils import *
-
+from functools import partial
 
 # custom weights initialization called on netG and netD
 
@@ -73,13 +73,15 @@ def generate_noise(key,size,num_samp=1,scale=1):
     key, subkey = random.split(key)
     
     noise = random.normal(subkey, shape=(num_samp, size[0], round(size[1]/scale), round(size[2]/scale)))
+    print("1", noise.shape)
    
     noise = noise.transpose([0, 2, 3, 1])
     
-    noise = upsampling(noise, size[1], size[2])
+    noise = upsampling(noise, scale, scale)
+    
     
     noise = noise.transpose([0, 3, 1, 2])
-    
+    print("2", noise.shape)
 
     return noise, key
 
@@ -110,21 +112,32 @@ def reset_grads(model,require_grad):
         p.requires_grad_(require_grad)
     return model
 
+def apply_state(state, *args, params=None):
+    res, params = state.apply_fn({'params': state.params if params is None else params, 'batch_stats': state.batch_stats}, *args, mutable=['batch_stats'])
+    state.replace(batch_stats=["batch_stats"])
+    return res, state
 
-
-def calc_gradient_penalty(paramsD, netD, key, real_data, fake_data, LAMBDA, device):
+def calc_gradient_penalty(paramsD, stateD, key, real_data, fake_data, LAMBDA):
     #print real_data.size()
     key, subkey = random.split(key)
     alpha = random.uniform(subkey)
-    jax.device_put(alpha, device=device) #cuda() #gpu) #if use_cuda else alpha
-
+    print(fake_data)
+    print("fake shape", fake_data.shape)
+    print("real shape", real_data.shape)
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
-
-
-    gradients = jax.grad(netD.apply, argnums=1)(paramsD, interpolates)
+    
+    def func(interpolates):
+        val, _ = stateD.apply_fn({'params': paramsD, 'batch_stats': stateD.batch_stats}, interpolates, mutable=['batch_stats'])
+        return val
+    # TODO
+    disc_interpolates = func(interpolates)
+    gradients = jax.jvp(func, (interpolates,), (jnp.ones(interpolates.shape),))
+    gradients = gradients[0]
+    print(gradients.shape)
+#     gradients, stateD = jax.grad(partial(stateD.apply_fn, mutable=['batch_stats']), argnums=1, has_aux=True)({'params': paramsD, 'batch_stats': stateD.batch_stats}, interpolates)
     #LAMBDA = 1
-    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
-    return gradient_penalty, key
+    gradient_penalty = ((jax.numpy.linalg.norm(gradients, ord=2, axis=1) - 1) ** 2).mean() * LAMBDA
+    return gradient_penalty, stateD, key
 
 def read_image(opt):
     x = img.imread('%s/%s' % (opt.input_dir,opt.input_name))
@@ -211,11 +224,9 @@ def load_trained_pyramid(opt, mode_='train'):
 
 def generate_in2coarsest(reals,scale_v,scale_h,opt):
     real = reals[opt.gen_start_scale]
-    real_down = upsampling(real, scale_v * real.shape[2], scale_h * real.shape[3])
+    real_down = upsampling(real, scale_v, scale_h)
     if opt.gen_start_scale == 0:
-        in_s = jax.device_put(jnp.zeros(real_down.shape), device=opt.device)
-    else: #if n!=0
-        in_s = upsampling(real_down, real_down.shape[2], real_down.shape[3])
+        in_s = jnp.zeros(real_down.shape)
     return in_s
 
 def generate_dir2save(opt):

@@ -54,7 +54,7 @@ class ConvBlock(nn.Module):
     def __call__(self, x):
         # print("Conv block", kernel_size, strides, padding)
         x = ConvNd(self.out_channel,kernel_size=self.kernel_size,strides=self.strides,padding=self.padding, dim=self.dim, name='conv')(x)
-        x = nn.BatchNorm(name="norm", use_running_average=True)(x)
+        x = nn.BatchNorm(name="norm", use_running_average=False)(x)
         x = nn.leaky_relu(x, 0.2)
         return x
 
@@ -81,6 +81,7 @@ class WDiscriminator(nn.Module):
         x = self.body(x)
         x = self.tail(x)
         x = x.transpose([0, 3, 1, 2])
+        print(f"Discriminator FINAL SHAPE: {x.shape}")
         return x
 
 
