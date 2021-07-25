@@ -69,11 +69,13 @@ def convert_image_np_2d(inp):
     # inp = std*
     return inp
 
+# TODO
+# @jax.jit
 def generate_noise(key,size,num_samp=1,scale=1):
     key, subkey = random.split(key)
     
-    noise = random.normal(subkey, shape=(num_samp, size[0], round(size[1]/scale), round(size[2]/scale)))
-    print("1", noise.shape)
+    noise = random.normal(subkey, shape=(num_samp, size[0], jnp.round(size[1]/scale).astype(int), jnp.round(size[2]/scale).astype(int)))
+#     print("1", noise.shape)
    
     noise = noise.transpose([0, 2, 3, 1])
     
@@ -81,7 +83,7 @@ def generate_noise(key,size,num_samp=1,scale=1):
     
     
     noise = noise.transpose([0, 3, 1, 2])
-    print("2", noise.shape)
+#     print("2", noise.shape)
 
     return noise, key
 
@@ -117,13 +119,14 @@ def apply_state(state, *args, params=None):
     state.replace(batch_stats=["batch_stats"])
     return res, state
 
+@jax.jit
 def calc_gradient_penalty(paramsD, stateD, key, real_data, fake_data, LAMBDA):
     #print real_data.size()
     key, subkey = random.split(key)
     alpha = random.uniform(subkey)
-    print(fake_data)
-    print("fake shape", fake_data.shape)
-    print("real shape", real_data.shape)
+#     print(fake_data)
+#     print("fake shape", fake_data.shape)
+#     print("real shape", real_data.shape)
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
     
     def func(interpolates):
@@ -133,7 +136,7 @@ def calc_gradient_penalty(paramsD, stateD, key, real_data, fake_data, LAMBDA):
     disc_interpolates = func(interpolates)
     gradients = jax.jvp(func, (interpolates,), (jnp.ones(interpolates.shape),))
     gradients = gradients[0]
-    print(gradients.shape)
+#     print(gradients.shape)
 #     gradients, stateD = jax.grad(partial(stateD.apply_fn, mutable=['batch_stats']), argnums=1, has_aux=True)({'params': paramsD, 'batch_stats': stateD.batch_stats}, interpolates)
     #LAMBDA = 1
     gradient_penalty = ((jax.numpy.linalg.norm(gradients, ord=2, axis=1) - 1) ** 2).mean() * LAMBDA

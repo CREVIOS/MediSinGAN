@@ -81,7 +81,7 @@ class WDiscriminator(nn.Module):
         x = self.body(x)
         x = self.tail(x)
         x = x.transpose([0, 3, 1, 2])
-        print(f"Discriminator FINAL SHAPE: {x.shape}")
+#         print(f"Discriminator FINAL SHAPE: {x.shape}")
         return x
 
 
@@ -111,7 +111,7 @@ class GeneratorConcatSkip2CleanAdd(nn.Module):
         x = x.transpose([0, 3, 1, 2])
         ind = int((y.shape[2]-x.shape[2])/2)
         y = y[:,:,ind:(y.shape[2]-ind),ind:(y.shape[3]-ind)]
-        print(f"X shape: {x.shape} , Y shape: {y.shape}")
+#         print(f"X shape: {x.shape} , Y shape: {y.shape}")
         return x+y
 
 

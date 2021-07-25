@@ -51,9 +51,8 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         if (nfc_prev==opt.nfc):
             G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1))
             D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1))
-
+        
         z_curr,in_s,G_curr = train_single_scale(D_curr,D_params, G_curr, G_params,reals,Gs,Zs,in_s,NoiseAmp,opt)
-
 
         Gs.append(G_curr)
         Zs.append(z_curr)
@@ -70,40 +69,41 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
     return
 
 
-
 def step_stateD(in_stateD, fake, real, prev, opt):
+    @jax.jit
     def discriminator_loss(params):
         output, stateD = apply_state(in_stateD, real)
 
         errD_real = -output.mean()#-a
-        D_x = -errD_real.item()
+        D_x = -errD_real
 
 
         errD_fake = output.mean()
-        D_G_z = output.mean().item()
+        D_G_z = output.mean()
 
-        gradient_penalty, stateD, opt.PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
+        gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
 
-        return errD_real + errD_fake + gradient_penalty, stateD
+        return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
 
-    (errD, stateD), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params)
+    (errD, (stateD, opt.new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params)
     stateD = stateD.apply_gradients(grads=grads, batch_stats=stateD.batch_stats)
     return errD, stateD
 
 def step_stateG(in_stateG, z_opt, z_prev, output, alpha, real, opt):
+    @jax.jit
     def rec_loss(params):
         if alpha!=0:
             mse_loss = lambda x,y: jnp.mean((x-y)**2)
             Z_opt = opt.noise_amp*z_opt+z_prev
-            rec, stateG = apply_state(in_stateG, Z_opt, z_prev, params=params)
+            rec, out_stateG = apply_state(in_stateG, Z_opt, z_prev, params=params)
             rec_loss = alpha*mse_loss(rec,real)        
         else:
             Z_opt = z_opt
-            rec_loss = 0
-        return rec_loss, stateG
-    (rec_loss_val, stateG), grads = jax.value_and_grad(rec_loss)(in_stateG.params)
+            rec_loss = alpha
+        return rec_loss, (out_stateG, Z_opt)
+    (rec_loss_val, (stateG, Z_opt)), grads = jax.value_and_grad(rec_loss, has_aux=True)(in_stateG.params)
     stateG = stateG.apply_gradients(grads=grads, batch_stats=stateG.batch_stats)
-    return rec_loss_val, stateG
+    return rec_loss_val, stateG, Z_opt
 
 def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
 
@@ -125,7 +125,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
     fixed_noise,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
     z_opt = jnp.zeros(fixed_noise.shape)
     z_opt = m_noise(z_opt)
-
+    
     # setup optimizer
 #     optimizerD = flax.optim.Adam(learning_rate=opt.lr_d, beta1=opt.beta1, beta2=0.999).create(paramsD)
 #     optimizerG = flax.optim.Adam(learning_rate=opt.lr_g, beta1=opt.beta1, beta2 = 0.999).create(paramsG)
@@ -202,7 +202,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
                 noise = noise_
             else:
                 noise = opt.noise_amp*noise_+prev
-
+            
             # fake = netG(noise.detach(),prev)
             # output = netD(fake.detach())
             # errD_fake = output.mean()
@@ -213,7 +213,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
             # gradient_penalty.backward()
 
             # errD = errD_real + errD_fake + gradient_penalty
-            print(f"Noise shape: {noise.shape}, prev shape: {prev.shape}")
+#             print(f"Noise shape: {noise.shape}, prev shape: {prev.shape}")
             fake, stateG = apply_state(stateG, noise, prev)
             
             errD, stateD = step_stateD(stateD, fake, real, prev, opt)
@@ -241,7 +241,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
             output, stateD = apply_state(stateD, fake)
             errG = -output.mean()
-            rec_loss, stateG = step_stateG(stateG, z_opt, z_prev, errG, alpha, real, opt)
+            rec_loss, stateG, Z_opt = step_stateG(stateG, z_opt, z_prev, errG, alpha, real, opt)
 
         # errG2plot.append(errG.detach()+rec_loss)
         # D_real2plot.append(D_x)
@@ -252,8 +252,9 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
             print('scale %d:[%d/%d]' % (len(Gs), epoch, opt.niter))
 
         if epoch % 500 == 0 or epoch == (opt.niter-1):
-            plt.imsave('%s/fake_sample.png' %  (opt.outf), functions.convert_image_np(fake.detach()), vmin=0, vmax=1)
-            plt.imsave('%s/G(z_opt).png'    % (opt.outf),  functions.convert_image_np(netG(Z_opt.detach(), z_prev).detach()), vmin=0, vmax=1)
+            GZ_opt, stateG = apply_state(stateG, Z_opt, z_prev)
+            plt.imsave('%s/fake_sample.png' %  (opt.outf), functions.convert_image_np(fake), vmin=0, vmax=1)
+            plt.imsave('%s/G(z_opt).png'    % (opt.outf),  functions.convert_image_np(GZ_opt), vmin=0, vmax=1)
             #plt.imsave('%s/D_fake.png'   % (opt.outf), functions.convert_image_np(D_fake_map))
             #plt.imsave('%s/D_real.png'   % (opt.outf), functions.convert_image_np(D_real_map))
             #plt.imsave('%s/z_opt.png'    % (opt.outf), functions.convert_image_np(z_opt.detach()), vmin=0, vmax=1)
@@ -267,8 +268,8 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
         # schedulerD.step()
         # schedulerG.step()
 
-    functions.save_networks(stateD.params,stateG.params,z_opt,opt)
-    return z_opt,in_s,netG    
+    functions.save_networks(stateD,stateG,z_opt,opt)
+    return z_opt,in_s,stateG    
 
 def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
     G_z = in_s
@@ -365,7 +366,7 @@ def init_models(opt, img_shape):
     # netG.apply(models.weights_init)
     if opt.netG != '':
         paramsG = functions.pickle_load(opt.netG)
-    print(netG)
+#     print(netG)
 
     opt.PRNGKey, subkey = jax.random.split(opt.PRNGKey)
     #discriminator initialization:
@@ -374,7 +375,7 @@ def init_models(opt, img_shape):
     # netD.apply(models.weights_init)
     if opt.netD != '':
         paramsD = functions.pickle_load(opt.netD)
-    print(netD)
+#     print(netD)
 
     return netD, paramsD, netG, paramsG
 
