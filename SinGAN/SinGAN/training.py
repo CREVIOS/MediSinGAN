@@ -17,7 +17,7 @@ import math
 import matplotlib.pyplot as plt
 from SinGAN.imresize import imresize
 from typing import Any
-
+from SinGAN.stopwatch import StopwatchPrint
 
 class TrainState(train_state.TrainState):
     batch_stats: Any

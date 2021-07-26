@@ -264,7 +264,6 @@ def post_config(opt):
     platform = "cpu" if opt.not_cuda else "gpu"
     jax.config.update('jax_platform_name', platform)
     devices = jax.devices(backend=platform)
-    print(jax.devices())
     
     opt.device = devices[0]
     opt.niter_init = opt.niter
