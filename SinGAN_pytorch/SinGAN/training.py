@@ -12,13 +12,17 @@ import numpy as np
 
 def train(opt,Gs,Zs,reals,NoiseAmp):
     real_ = functions.read_image(opt)
+    # print("real_=",real_.shape)
     in_s = 0
     scale_num = 0
     real = imresize(real_,opt.scale1,opt)
+    # print("real after resize=",real.shape)
     reals = functions.creat_reals_pyramid(real,reals,opt)
+    # print("reals=",len(reals))
     nfc_prev = 0
 
     while scale_num<opt.stop_scale+1:
+        # print("in up")
         opt.nfc = min(opt.nfc_init * pow(2, math.floor(scale_num / 4)), 128)
         opt.min_nfc = min(opt.min_nfc_init * pow(2, math.floor(scale_num / 4)), 128)
 
@@ -110,9 +114,9 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
     D_fake2plot = []
     z_opt2plot = []
     
-    print("scale=",len(Gs))
-    # for epoch in tqdm(range(opt.niter)):
-    for epoch in tqdm(range(2)):
+    # print("scale=",len(Gs))
+    for epoch in tqdm(range(opt.niter)):
+    # for epoch in tqdm(range(2)):
         
         if (Gs == []) & (opt.mode != 'SR_train'):
             z_opt = functions.generate_noise([1,opt.nzx,opt.nzy], device=opt.device)
@@ -129,6 +133,7 @@ def train_single_scale(netD,netG,reals,Gs,Zs,in_s,NoiseAmp,opt,centers=None):
         for j in range(opt.Dsteps):
             # train with real
             netD.zero_grad()
+            # print("real=",real.shape)
             output = netD(real).to(opt.device)
             #D_real_map = output.detach()
             errD_real = -output.mean()#-a

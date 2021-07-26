@@ -241,7 +241,7 @@ def adjust_scales2image_SR(real_,opt):
     return real
 
 def creat_reals_pyramid(real,reals,opt):
-    real = real[:,0:3,:,:]
+    real = real[:,0:opt.nc_im,:,:]
     for i in range(0,opt.stop_scale+1,1):
         scale = math.pow(opt.scale_factor,opt.stop_scale-i)
         curr_real = imresize(real,scale,opt)
