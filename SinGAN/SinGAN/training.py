@@ -74,16 +74,18 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 def step_stateD(in_stateD, fake, real, prev, opt):
     @jax.jit
     def discriminator_loss(params):
-        output, stateD = apply_state(in_stateD, real)
+        with StopwatchPrint("apply_state D..."):
+            output, stateD = apply_state(in_stateD, real)
 
-        errD_real = -output.mean()#-a
-        D_x = -errD_real
+        with StopwatchPrint("calc mean..."):
+            errD_real = -output.mean()#-a
+            D_x = -errD_real
 
 
-        errD_fake = output.mean()
-        D_G_z = output.mean()
-
-        gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
+            errD_fake = output.mean()
+            D_G_z = output.mean()
+        with StopwatchPrint("calc gradient..."):
+            gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
 
         return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
 
@@ -186,23 +188,17 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
                         #     z_prev = m_image(z_prev)
                         #     prev = z_prev
                         else:
-                            with StopwatchPrint("calc prev..."):
-                                prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
-                            with StopwatchPrint("m image..."):
-                                prev = m_image(prev)
-                            with StopwatchPrint("calc z prev..."):
-                                z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
-                            with StopwatchPrint("criterion..."):
-                                criterion = nn.MSELoss()
+                            
+                            prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
+                            prev = m_image(prev)
+                            z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
+                            criterion = nn.MSELoss()
                             RMSE = torch.sqrt(criterion(real, z_prev))
                             opt.noise_amp = opt.noise_amp_init*RMSE
-                            with StopwatchPrint("z prev m image..."):
-                                z_prev = m_image(z_prev)
+                            z_prev = m_image(z_prev)
                     else:
-                        with StopwatchPrint("calc prev 1..."):
-                            prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
-                        with StopwatchPrint("calc m image 1..."):
-                            prev = m_image(prev)
+                        prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
+                        prev = m_image(prev)
 
                     if (Gs == []) & (opt.mode != 'SR_train'):
                         noise = noise_
