@@ -74,18 +74,17 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 def step_stateD(in_stateD, fake, real, prev, opt):
     @jax.jit
     def discriminator_loss(params):
-        with StopwatchPrint("apply_state D..."):
-            output, stateD = apply_state(in_stateD, real)
+        
+        output, stateD = apply_state(in_stateD, real)
 
-        with StopwatchPrint("calc mean..."):
-            errD_real = -output.mean()#-a
-            D_x = -errD_real
+        errD_real = -output.mean()#-a
+        D_x = -errD_real
 
 
-            errD_fake = output.mean()
-            D_G_z = output.mean()
-        with StopwatchPrint("calc gradient..."):
-            gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
+        errD_fake = output.mean()
+        D_G_z = output.mean()
+       
+        gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
 
         return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
 
@@ -125,24 +124,23 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
     m_image = lambda arr: (jnp.pad(arr, ((0,0), (0,0), (pad_image,pad_image), (pad_image,pad_image))))
 
     alpha = opt.alpha
-    with StopwatchPrint("Generating noise..."):
-        fixed_noise,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
-        z_opt = jnp.zeros(fixed_noise.shape)
-        z_opt = m_noise(z_opt)
+    fixed_noise,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
+    z_opt = jnp.zeros(fixed_noise.shape)
+    z_opt = m_noise(z_opt)
     
     # setup optimizer
 #     optimizerD = flax.optim.Adam(learning_rate=opt.lr_d, beta1=opt.beta1, beta2=0.999).create(paramsD)
 #     optimizerG = flax.optim.Adam(learning_rate=opt.lr_g, beta1=opt.beta1, beta2 = 0.999).create(paramsG)
-    with StopwatchPrint("Optimizer..."):
-        optimizerD = optax.adam(learning_rate=opt.lr_d, b1=opt.beta1, b2=0.999)
-        optimizerG = optax.adam(learning_rate=opt.lr_g, b1=opt.beta1, b2 = 0.999)
+    
+    optimizerD = optax.adam(learning_rate=opt.lr_d, b1=opt.beta1, b2=0.999)
+    optimizerG = optax.adam(learning_rate=opt.lr_g, b1=opt.beta1, b2 = 0.999)
 
-    with StopwatchPrint("Create train state..."):
-        stateD = TrainState.create(
-        apply_fn=netD.apply, params=paramsD["params"], batch_stats=paramsD["batch_stats"], tx=optimizerD)
-        
-        stateG = TrainState.create(
-        apply_fn=netG.apply, params=paramsG["params"], batch_stats=paramsG["batch_stats"], tx=optimizerG)
+
+    stateD = TrainState.create(
+    apply_fn=netD.apply, params=paramsD["params"], batch_stats=paramsD["batch_stats"], tx=optimizerD)
+    
+    stateG = TrainState.create(
+    apply_fn=netG.apply, params=paramsG["params"], batch_stats=paramsG["batch_stats"], tx=optimizerG)
     
     # TODO
     # schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerD,milestones=[1600],gamma=opt.gamma)
@@ -205,8 +203,8 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
                     else:
                         noise = opt.noise_amp*noise_+prev
                     
-                    with StopwatchPrint("apply state..."):
-                        fake, stateG = apply_state(stateG, noise, prev)
+                    
+                    fake, stateG = apply_state(stateG, noise, prev)
                     
                     with StopwatchPrint("step state d..."):
                         errD, stateD = step_stateD(stateD, fake, real, prev, opt)
