@@ -8,14 +8,15 @@ from SinGAN.utils import *
 # import torch
 
 
+@jax.jit
 def denorm(x):
     out = (x + 1) / 2
     return out.clamp(0, 1)
 
+@jax.jit
 def norm(x):
     out = (x - 0.5) * 2
     return out.clamp(-1, 1)
-
 
 def imresize(im,scale,opt):
     #s = im.shape

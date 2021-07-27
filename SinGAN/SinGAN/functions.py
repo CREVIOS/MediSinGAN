@@ -76,13 +76,13 @@ def generate_noise(key,size,num_samp=1,scale=1):
     
     noise = random.normal(subkey, shape=(num_samp, size[0], jnp.round(size[1]/scale).astype(int), jnp.round(size[2]/scale).astype(int)))
 #     print("1", noise.shape)
-   
-    noise = noise.transpose([0, 2, 3, 1])
-    
-    noise = upsampling(noise, scale, scale)
-    
-    
-    noise = noise.transpose([0, 3, 1, 2])
+    if scale != 1:
+        noise = noise.transpose([0, 2, 3, 1])
+
+        noise = upsampling(noise, scale, scale)
+
+
+        noise = noise.transpose([0, 3, 1, 2])
 #     print("2", noise.shape)
 
     return noise, key
@@ -341,17 +341,18 @@ def dilate_mask(mask,opt):
 
 
 
+@jax.jit
 def interpolate_bilinear(im, rows, cols):
 
   # based on http://stackoverflow.com/a/12729229
-  col_lo = np.floor(cols).astype(int)
+  col_lo = jnp.floor(cols).astype(int)
   col_hi = col_lo + 1
-  row_lo = np.floor(rows).astype(int)
+  row_lo = jnp.floor(rows).astype(int)
   row_hi = row_lo + 1
 
   nrows, ncols = im.shape[-3:-1]
-  def cclip(cols): return np.clip(cols, 0, ncols - 1)
-  def rclip(rows): return np.clip(rows, 0, nrows - 1)
+  def cclip(cols): return jnp.clip(cols, 0, ncols - 1)
+  def rclip(rows): return jnp.clip(rows, 0, nrows - 1)
   Ia = im[..., rclip(row_lo), cclip(col_lo), :]
   Ib = im[..., rclip(row_hi), cclip(col_lo), :]
   Ic = im[..., rclip(row_lo), cclip(col_hi), :]
@@ -364,14 +365,14 @@ def interpolate_bilinear(im, rows, cols):
 
   return wa*Ia + wb*Ib + wc*Ic + wd*Id
 
-
-def upsampling(img,sx, sy):
+@jax.jit
+def upsampling(img, sx, sy):
    nrows, ncols = img.shape[-3:-1]
    delta_x = 0.5/sx
    delta_y = 0.5/sy
 
-   rows = np.linspace(delta_y,nrows-delta_y, np.int32(sy*nrows))
-   cols = np.linspace(delta_x,ncols-delta_x, np.int32(sx*ncols))
+   rows = np.linspace(delta_y,nrows-delta_y, jnp.int32(sy*nrows))
+   cols = np.linspace(delta_x,ncols-delta_x, jnp.int32(sx*ncols))
    ROWS, COLS = np.meshgrid(rows,cols,indexing='ij')
    
    img_resize_vec = interpolate_bilinear(img, ROWS.flatten(), COLS.flatten())
