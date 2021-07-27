@@ -19,8 +19,6 @@ from sklearn.cluster import KMeans
 import pickle
 from SinGAN.utils import *
 from functools import partial
-# from SinGAN.stopwatch import StopwatchPrint
-
 
 # custom weights initialization called on netG and netD
 
@@ -116,7 +114,6 @@ def reset_grads(model,require_grad):
         p.requires_grad_(require_grad)
     return model
 
-@jax.jit
 def apply_state(state, *args, params=None):
     res, params = state.apply_fn({'params': state.params if params is None else params, 'batch_stats': state.batch_stats}, *args, mutable=['batch_stats'])
     state.replace(batch_stats=["batch_stats"])
@@ -163,9 +160,9 @@ def read_image2np(opt):
     x = x[:, :, 0:3]
     return x
 
-def save_networks(paramsG,paramsD,z,opt):
-    pickle_save(paramsG, '%s/netG.pth' % (opt.outf))
-    pickle_save(paramsD, '%s/netD.pth' % (opt.outf))
+def save_networks(paramsD,paramsG,z,opt):
+    pickle_save({"params":paramsG.params, "batch_stats":paramsG.batch_stats}, '%s/netG.pth' % (opt.outf))
+    pickle_save({"params":paramsD.params, "batch_stats":paramsD.batch_stats}, '%s/netD.pth' % (opt.outf))
     pickle_save(z, '%s/z_opt.pth' % (opt.outf))
 
 def adjust_scales2image(real_,opt):

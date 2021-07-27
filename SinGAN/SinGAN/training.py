@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from SinGAN.imresize import imresize
 from typing import Any
 from SinGAN.stopwatch import StopwatchPrint
+from functools import partial
 
 class TrainState(train_state.TrainState):
     batch_stats: Any
@@ -53,10 +54,10 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         if (nfc_prev==opt.nfc):
             G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1))
             D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1))
-        with StopwatchPrint("Train single scale..."):
+        with StopwatchPrint(f"Train scale {scale_num}..."):
             z_curr,in_s,G_curr = train_single_scale(D_curr,D_params, G_curr, G_params,reals,Gs,Zs,in_s,NoiseAmp,opt)
 
-        Gs.append(G_curr)
+        Gs.append({"params":G_curr.params, "batch_stats":G_curr.batch_stats})
         Zs.append(z_curr)
         NoiseAmp.append(opt.noise_amp)
         with StopwatchPrint("Saving models..."):
@@ -70,42 +71,43 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         del D_curr,G_curr
     return
 
+@jax.jit
+def discriminator_loss(params, in_stateD, fake, real, prev, PRNGKey, lambda_grad):    
+    output, stateD = apply_state(in_stateD, real)
 
-def step_stateD(in_stateD, fake, real, prev, opt):
-    @jax.jit
-    def discriminator_loss(params):
-        
-        output, stateD = apply_state(in_stateD, real)
-
-        errD_real = -output.mean()#-a
-        D_x = -errD_real
+    errD_real = -output.mean()#-a
+    D_x = -errD_real
 
 
-        errD_fake = output.mean()
-        D_G_z = output.mean()
-       
-        gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
+    errD_fake = output.mean()
+    D_G_z = output.mean()
+    
+    gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, PRNGKey, real, fake, lambda_grad)
 
-        return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
-    with StopwatchPrint("apply disc"):
-        (errD, (stateD, opt.new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params)
-    with StopwatchPrint("apply grads"):
-        stateD = stateD.apply_gradients(grads=grads, batch_stats=stateD.batch_stats)
-    return errD, stateD
+    return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
 
-def step_stateG(in_stateG, z_opt, z_prev, output, alpha, real, opt):
-    @jax.jit
-    def rec_loss(params):
-        if alpha!=0:
-            mse_loss = lambda x,y: jnp.mean((x-y)**2)
-            Z_opt = opt.noise_amp*z_opt+z_prev
-            rec, out_stateG = apply_state(in_stateG, Z_opt, z_prev, params=params)
-            rec_loss = alpha*mse_loss(rec,real)        
-        else:
-            Z_opt = z_opt
-            rec_loss = alpha
-        return rec_loss, (out_stateG, Z_opt)
-    (rec_loss_val, (stateG, Z_opt)), grads = jax.value_and_grad(rec_loss, has_aux=True)(in_stateG.params)
+@jax.jit
+def step_stateD(in_stateD, fake, real, prev, PRNGKey, lambda_grad):
+    (errD, (stateD, new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params, in_stateD, fake, real, prev, PRNGKey, lambda_grad)
+    
+    stateD = stateD.apply_gradients(grads=grads, batch_stats=stateD.batch_stats)
+    return errD, stateD, new_PRNGKey
+
+#@partial(jax.jit, static_argnames="alpha")
+def rec_loss(params,in_stateG, z_opt, z_prev, output, alpha, real, noise_amp):
+    if alpha!=0:
+        mse_loss = lambda x,y: jnp.mean((x-y)**2)
+        Z_opt = noise_amp*z_opt+z_prev
+        rec, out_stateG = apply_state(in_stateG, Z_opt, z_prev, params=params)
+        rec_loss = alpha*mse_loss(rec,real)
+    else:
+        Z_opt = z_opt
+        rec_loss = alpha
+    return rec_loss, (out_stateG, Z_opt)
+
+@partial(jax.jit, static_argnames="alpha")
+def step_stateG(in_stateG, z_opt, z_prev, output, alpha, real, noise_amp):
+    (rec_loss_val, (stateG, Z_opt)), grads = jax.value_and_grad(rec_loss, has_aux=True)(in_stateG.params,in_stateG, z_opt, z_prev, output, alpha, real, noise_amp)
     stateG = stateG.apply_gradients(grads=grads, batch_stats=stateG.batch_stats)
     return rec_loss_val, stateG, Z_opt
 
@@ -153,74 +155,71 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
     D_fake2plot = []
     z_opt2plot = []
 
-    with StopwatchPrint("Training..."):
-        for epoch in range(opt.niter):
-            if (Gs == []):
-                z_opt,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
-                z_opt = m_noise(jnp.tile(z_opt,[1,3,1,1]))
-                noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
-                noise_ = m_noise(jnp.tile(noise_,[1,3,1,1]))
+    
+    for epoch in range(opt.niter):
+        if (Gs == []):
+            z_opt,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
+            z_opt = m_noise(jnp.tile(z_opt,[1,3,1,1]))
+            noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
+            noise_ = m_noise(jnp.tile(noise_,[1,3,1,1]))
+        else:
+            noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
+            noise_ = m_noise(noise_)
+
+        ############################
+        # (1) Update D network: maximize D(x) + D(G(z))
+        ###########################
+        for j in range(opt.Dsteps):                  
+
+            # train with fake
+            if (j==0) & (epoch == 0):
+                if Gs == []:
+                    prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
+                    in_s = prev
+                    prev = m_image(prev)
+                    z_prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
+                    z_prev = m_noise(z_prev)
+                    opt.noise_amp = 1
+                # elif opt.mode == 'SR_train':
+                #     z_prev = in_s
+                #     criterion = nn.MSELoss()
+                #     RMSE = torch.sqrt(criterion(real, z_prev))
+                #     opt.noise_amp = opt.noise_amp_init * RMSE
+                #     z_prev = m_image(z_prev)
+                #     prev = z_prev
+                else:
+                    
+                    prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
+                    prev = m_image(prev)
+                    z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
+                    criterion = nn.MSELoss()
+                    RMSE = torch.sqrt(criterion(real, z_prev))
+                    opt.noise_amp = opt.noise_amp_init*RMSE
+                    z_prev = m_image(z_prev)
             else:
-                noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,opt.nzx,opt.nzy])
-                noise_ = m_noise(noise_)
+                prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
+                prev = m_image(prev)
 
-            ############################
-            # (1) Update D network: maximize D(x) + D(G(z))
-            ###########################
-            with StopwatchPrint("Update D..."):
-                for j in range(opt.Dsteps):                  
-
-                    # train with fake
-                    if (j==0) & (epoch == 0):
-                        if Gs == []:
-                            prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
-                            in_s = prev
-                            prev = m_image(prev)
-                            z_prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
-                            z_prev = m_noise(z_prev)
-                            opt.noise_amp = 1
-                        # elif opt.mode == 'SR_train':
-                        #     z_prev = in_s
-                        #     criterion = nn.MSELoss()
-                        #     RMSE = torch.sqrt(criterion(real, z_prev))
-                        #     opt.noise_amp = opt.noise_amp_init * RMSE
-                        #     z_prev = m_image(z_prev)
-                        #     prev = z_prev
-                        else:
-                            
-                            prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
-                            prev = m_image(prev)
-                            z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
-                            criterion = nn.MSELoss()
-                            RMSE = torch.sqrt(criterion(real, z_prev))
-                            opt.noise_amp = opt.noise_amp_init*RMSE
-                            z_prev = m_image(z_prev)
-                    else:
-                        prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
-                        prev = m_image(prev)
-
-                    if (Gs == []) & (opt.mode != 'SR_train'):
-                        noise = noise_
-                    else:
-                        noise = opt.noise_amp*noise_+prev
-                    
-                    
-                    fake, stateG = apply_state(stateG, noise, prev)
-                    
-                    with StopwatchPrint("step state d..."):
-                        errD, stateD = step_stateD(stateD, fake, real, prev, opt)
+            if (Gs == []) & (opt.mode != 'SR_train'):
+                noise = noise_
+            else:
+                noise = opt.noise_amp*noise_+prev
+            
+            
+            fake, stateG = apply_state(stateG, noise, prev)
+            
+            errD, stateD, opt.PRNGKey = step_stateD(stateD, fake, real, prev, opt.PRNGKey, opt.lambda_grad)
 
         errD2plot.append(errD)
 
         ############################
         # (2) Update G network: maximize D(G(z))
         ###########################
-        with StopwatchPrint("Update G..."):
-            for j in range(opt.Gsteps):
+        for j in range(opt.Gsteps):
 
-                output, stateD = apply_state(stateD, fake)
-                errG = -output.mean()
-                rec_loss, stateG, Z_opt = step_stateG(stateG, z_opt, z_prev, errG, alpha, real, opt)
+            output, stateD = apply_state(stateD, fake)
+            errG = -output.mean()
+            rec_loss, stateG, Z_opt = step_stateG(stateG, z_opt, z_prev, errG, alpha, real, opt.noise_amp)
 
         # errG2plot.append(errG.detach()+rec_loss)
         # D_real2plot.append(D_x)
@@ -246,8 +245,11 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
         # schedulerD.step()
         # schedulerG.step()
-    with StopwatchPrint("Saving Networks..."):
-        functions.save_networks(stateD,stateG,z_opt,opt)
+    
+    # TODO Reimplement saving!
+    #with StopwatchPrint("Saving Networks..."):
+    functions.save_networks(stateD,stateG,z_opt,opt)
+
     return z_opt,in_s,stateG    
 
 def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
@@ -357,4 +359,3 @@ def init_models(opt, img_shape):
 #     print(netD)
 
     return netD, paramsD, netG, paramsG
-
