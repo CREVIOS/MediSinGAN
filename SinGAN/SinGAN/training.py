@@ -52,8 +52,8 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
 #         print(D_curr, D_params)
 #         print(G_curr, G_params)
         if (nfc_prev==opt.nfc):
-            G_params = pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1))
-            D_params = pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1))
+            G_params = functions.pickle_load('%s/%d/netG.pth' % (opt.out_,scale_num-1))
+            D_params = functions.pickle_load('%s/%d/netD.pth' % (opt.out_,scale_num-1))
         with StopwatchPrint(f"Train scale {scale_num}..."):
             z_curr,in_s,G_curr = train_single_scale(D_curr,D_params, G_curr, G_params,reals,Gs,Zs,in_s,NoiseAmp,opt)
 
