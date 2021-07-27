@@ -186,26 +186,34 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
                         #     z_prev = m_image(z_prev)
                         #     prev = z_prev
                         else:
-                            prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
-                            prev = m_image(prev)
-                            z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
-                            criterion = nn.MSELoss()
+                            with StopwatchPrint("calc prev..."):
+                                prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
+                            with StopwatchPrint("m image..."):
+                                prev = m_image(prev)
+                            with StopwatchPrint("calc z prev..."):
+                                z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
+                            with StopwatchPrint("criterion..."):
+                                criterion = nn.MSELoss()
                             RMSE = torch.sqrt(criterion(real, z_prev))
                             opt.noise_amp = opt.noise_amp_init*RMSE
-                            z_prev = m_image(z_prev)
+                            with StopwatchPrint("z prev m image..."):
+                                z_prev = m_image(z_prev)
                     else:
-                        prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
-                        prev = m_image(prev)
+                        with StopwatchPrint("calc prev 1..."):
+                            prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
+                        with StopwatchPrint("calc m image 1..."):
+                            prev = m_image(prev)
 
                     if (Gs == []) & (opt.mode != 'SR_train'):
                         noise = noise_
                     else:
                         noise = opt.noise_amp*noise_+prev
                     
+                    with StopwatchPrint("apply state..."):
+                        fake, stateG = apply_state(stateG, noise, prev)
                     
-                    fake, stateG = apply_state(stateG, noise, prev)
-                    
-                    errD, stateD = step_stateD(stateD, fake, real, prev, opt)
+                    with StopwatchPrint("step state d..."):
+                        errD, stateD = step_stateD(stateD, fake, real, prev, opt)
 
         errD2plot.append(errD)
 
