@@ -25,8 +25,6 @@ def np2jax(x,opt):
         x = x[:,:,None,None]
         x = x.transpose(3, 2, 0, 1)
     x = jnp.asarray(x)
-    if not(opt.not_cuda):
-        x = move_to_gpu(x)
    
     x = norm(x)
     return x
