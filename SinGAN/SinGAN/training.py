@@ -87,9 +87,10 @@ def step_stateD(in_stateD, fake, real, prev, opt):
         gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, opt.PRNGKey, real, fake, opt.lambda_grad)
 
         return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
-
-    (errD, (stateD, opt.new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params)
-    stateD = stateD.apply_gradients(grads=grads, batch_stats=stateD.batch_stats)
+    with StopwatchPrint("apply disc"):
+        (errD, (stateD, opt.new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params)
+    with StopwatchPrint("apply grads"):
+        stateD = stateD.apply_gradients(grads=grads, batch_stats=stateD.batch_stats)
     return errD, stateD
 
 def step_stateG(in_stateG, z_opt, z_prev, output, alpha, real, opt):
