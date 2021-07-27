@@ -130,7 +130,8 @@ def calc_gradient_penalty(paramsD, stateD, key, real_data, fake_data, LAMBDA):
         return val
     # TODO
     disc_interpolates, vjp_fun = jax.vjp(func, interpolates)
-    gradients = vjp_fun(jnp.ones(disc_interpolates.shape))
+    gradients,  = vjp_fun(jnp.ones(disc_interpolates.shape))
+#     print(len(gradients))
 #     print(gradients.shape)
 #     gradients, stateD = jax.grad(partial(stateD.apply_fn, mutable=['batch_stats']), argnums=1, has_aux=True)({'params': paramsD, 'batch_stats': stateD.batch_stats}, interpolates)
     #LAMBDA = 1
