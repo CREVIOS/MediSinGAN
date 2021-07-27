@@ -118,8 +118,8 @@ def reset_grads(model,require_grad):
 
 @jax.jit
 def apply_state(state, *args, params=None):
-        res, params = state.apply_fn({'params': state.params if params is None else params, 'batch_stats': state.batch_stats}, *args, mutable=['batch_stats'])
-        state.replace(batch_stats=["batch_stats"])
+    res, params = state.apply_fn({'params': state.params if params is None else params, 'batch_stats': state.batch_stats}, *args, mutable=['batch_stats'])
+    state.replace(batch_stats=["batch_stats"])
     return res, state
 
 @jax.jit
