@@ -69,22 +69,17 @@ def convert_image_np_2d(inp):
     # inp = std*
     return inp
 
-# TODO
-# @jax.jit
+
+
 def generate_noise(key,size,num_samp=1,scale=1):
     key, subkey = random.split(key)
     
     noise = random.normal(subkey, shape=(num_samp, size[0], jnp.round(size[1]/scale).astype(int), jnp.round(size[2]/scale).astype(int)))
-#     print("1", noise.shape)
     if scale != 1:
         noise = noise.transpose([0, 2, 3, 1])
 
         noise = upsampling(noise, scale, scale)
-
-
         noise = noise.transpose([0, 3, 1, 2])
-#     print("2", noise.shape)
-
     return noise, key
 
 def plot_learning_curves(G_loss,D_loss,epochs,label1,label2,name):
@@ -191,7 +186,7 @@ def adjust_scales2image_SR(real_,opt):
     opt.stop_scale = opt.num_scales - scale2stop
     return real
 
-def creat_reals_pyramid(real,reals,opt):
+def create_reals_pyramid(real,reals,opt):
     real = real[:,0:3,:,:]
     for i in range(0,opt.stop_scale+1,1):
         scale = math.pow(opt.scale_factor,opt.stop_scale-i)

@@ -29,7 +29,7 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
     scale_num = 0
     real = imresize(real_,opt.scale1,opt)
     with StopwatchPrint("Creating pyramid..."):
-        reals = functions.creat_reals_pyramid(real,reals,opt)
+        reals = functions.create_reals_pyramid(real,reals,opt)
     
     nfc_prev = 0
 
@@ -131,23 +131,25 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
     z_opt = jnp.zeros(fixed_noise.shape)
     z_opt = m_noise(z_opt)
     
-    # setup optimizer
-#     optimizerD = flax.optim.Adam(learning_rate=opt.lr_d, beta1=opt.beta1, beta2=0.999).create(paramsD)
-#     optimizerG = flax.optim.Adam(learning_rate=opt.lr_g, beta1=opt.beta1, beta2 = 0.999).create(paramsG)
     
-    optimizerD = optax.adam(learning_rate=opt.lr_d, b1=opt.beta1, b2=0.999)
-    optimizerG = optax.adam(learning_rate=opt.lr_g, b1=opt.beta1, b2 = 0.999)
+    
+    schedule_D = optax.piecewise_constant_schedule(init_value=opt.lr_d, boundaries_and_scales={1600:opt.gamma})
+    schedule_G = optax.piecewise_constant_schedule(init_value=opt.lr_g, boundaries_and_scales={1600:opt.gamma})
 
+    optimizerD = optax.chain(
+        optax.scale_by_adam(b1=opt.beta1, b2=0.999),
+        optax.scale_by_schedule(schedule_D))
 
+    optimizerG = optax.chain(
+        optax.scale_by_adam(b1=opt.beta1, b2=0.999),
+        optax.scale_by_schedule(schedule_G))
+    
+    
     stateD = TrainState.create(
     apply_fn=netD.apply, params=paramsD["params"], batch_stats=paramsD["batch_stats"], tx=optimizerD)
     
     stateG = TrainState.create(
-    apply_fn=netG.apply, params=paramsG["params"], batch_stats=paramsG["batch_stats"], tx=optimizerG)
-    
-    # TODO
-    # schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerD,milestones=[1600],gamma=opt.gamma)
-    # schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizerG,milestones=[1600],gamma=opt.gamma)
+    apply_fn=netG.apply, params=paramsG["params"], batch_stats=paramsG["batch_stats"], tx=optimizerG)    
 
     errD2plot = []
     errG2plot = []
@@ -192,8 +194,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
                     prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
                     prev = m_image(prev)
                     z_prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rec',m_noise,m_image,opt)
-                    criterion = lambda x,y: jnp.mean((x-y)**2)
-                    RMSE = torch.sqrt(criterion(real, z_prev))
+                    RMSE = jnp.sqrt(jnp.mean((real-z_prev)**2))
                     opt.noise_amp = opt.noise_amp_init*RMSE
                     z_prev = m_image(z_prev)
             else:
@@ -243,11 +244,6 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
             functions.pickle_save(z_opt, '%s/z_opt.pth' % (opt.outf))
 
-        # schedulerD.step()
-        # schedulerG.step()
-    
-    # TODO Reimplement saving!
-    #with StopwatchPrint("Saving Networks..."):
     functions.save_networks(stateD,stateG,z_opt,opt)
 
     return z_opt,in_s,stateG    
@@ -270,7 +266,6 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 G_z = G_z[:,:,0:real_curr.shape[2],0:real_curr.shape[3]]
                 G_z = m_image(G_z)
                 z_in = noise_amp*z+G_z
-                # G_z = G(z_in.detach(),G_z)
                 G_z = imresize(G_z,1/opt.scale_factor,opt)
                 G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]]
                 count += 1
