@@ -131,18 +131,20 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
     z_opt = jnp.zeros(fixed_noise.shape)
     z_opt = m_noise(z_opt)
     
+    optimizerD = optax.adam(learning_rate=opt.lr_d, b1=opt.beta1, b2=0.999)
+    optimizerG = optax.adam(learning_rate=opt.lr_g, b1=opt.beta1, b2 = 0.999)
+ 
     
-    
-    schedule_D = optax.piecewise_constant_schedule(init_value=opt.lr_d, boundaries_and_scales={1600:opt.gamma})
-    schedule_G = optax.piecewise_constant_schedule(init_value=opt.lr_g, boundaries_and_scales={1600:opt.gamma})
+    # schedule_D = optax.piecewise_constant_schedule(init_value=opt.lr_d, boundaries_and_scales={1600:opt.gamma})
+    # schedule_G = optax.piecewise_constant_schedule(init_value=opt.lr_g, boundaries_and_scales={1600:opt.gamma})
 
-    optimizerD = optax.chain(
-        optax.scale_by_adam(b1=opt.beta1, b2=0.999),
-        optax.scale_by_schedule(schedule_D))
+    # optimizerD = optax.chain(
+    #     optax.scale_by_adam(b1=opt.beta1, b2=0.999),
+    #     optax.scale_by_schedule(schedule_D))
 
-    optimizerG = optax.chain(
-        optax.scale_by_adam(b1=opt.beta1, b2=0.999),
-        optax.scale_by_schedule(schedule_G))
+    # optimizerG = optax.chain(
+    #     optax.scale_by_adam(b1=opt.beta1, b2=0.999),
+    #     optax.scale_by_schedule(schedule_G))
     
     
     stateD = TrainState.create(
