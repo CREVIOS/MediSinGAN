@@ -18,7 +18,7 @@ import random as std_random
 from sklearn.cluster import KMeans
 import pickle
 from SinGAN.utils import *
-from functools import partialс
+from functools import partial
 from SinGAN.stopwatch import StopwatchPrint
 
 
