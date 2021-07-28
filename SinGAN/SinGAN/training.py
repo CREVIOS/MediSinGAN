@@ -225,12 +225,14 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
         # errG2plot.append(errG.detach()+rec_loss)
         # D_real2plot.append(D_x)
         # D_fake2plot.append(D_G_z)
-        # z_opt2plot.append(rec_loss)
+        z_opt2plot.append(rec_loss)
 
         if epoch % 25 == 0 or epoch == (opt.niter-1):
             print('scale %d:[%d/%d]' % (len(Gs), epoch, opt.niter))
 
         if epoch % 500 == 0 or epoch == (opt.niter-1):
+            functions.pickle_save(errD2plot, '%s/errd.txt' % (opt.outf))
+            functions.pickle_save(z_opt2plot, '%s/recloss.txt' % (opt.outf))
             GZ_opt, stateG = apply_state(stateG, Z_opt, z_prev)
             plt.imsave('%s/fake_sample.png' %  (opt.outf), functions.convert_image_np(fake), vmin=0, vmax=1)
             plt.imsave('%s/G(z_opt).png'    % (opt.outf),  functions.convert_image_np(GZ_opt), vmin=0, vmax=1)

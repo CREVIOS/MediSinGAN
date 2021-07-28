@@ -120,9 +120,7 @@ def calc_gradient_penalty(paramsD, stateD, key, real_data, fake_data, LAMBDA):
     #print real_data.size()
     key, subkey = random.split(key)
     alpha = random.uniform(subkey)
-#     print(fake_data)
-#     print("fake shape", fake_data.shape)
-#     print("real shape", real_data.shape)
+    
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
     
     def func(interpolates):
