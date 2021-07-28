@@ -62,7 +62,7 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         NoiseAmp.append(opt.noise_amp)
         with StopwatchPrint("Saving models..."):
             functions.pickle_save(Zs, '%s/Zs.pth' % (opt.out_))
-            functions.pickle_save([{"params":G_curr.params, "batch_stats":G_curr.batch_stats} for G_curr in GS], '%s/Gs.pth' % (opt.out_))
+            functions.pickle_save([{"params":G_curr.params, "batch_stats":G_curr.batch_stats} for G_curr in Gs], '%s/Gs.pth' % (opt.out_))
             functions.pickle_save(reals, '%s/reals.pth' % (opt.out_))
             functions.pickle_save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
 
