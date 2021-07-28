@@ -57,12 +57,12 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
         with StopwatchPrint(f"Train scale {scale_num}..."):
             z_curr,in_s,G_curr = train_single_scale(D_curr,D_params, G_curr, G_params,reals,Gs,Zs,in_s,NoiseAmp,opt)
 
-        Gs.append({"params":G_curr.params, "batch_stats":G_curr.batch_stats})
+        Gs.append(G_curr)
         Zs.append(z_curr)
         NoiseAmp.append(opt.noise_amp)
         with StopwatchPrint("Saving models..."):
             functions.pickle_save(Zs, '%s/Zs.pth' % (opt.out_))
-            functions.pickle_save(Gs, '%s/Gs.pth' % (opt.out_))
+            functions.pickle_save([{"params":G_curr.params, "batch_stats":G_curr.batch_stats} for G_curr in GS], '%s/Gs.pth' % (opt.out_))
             functions.pickle_save(reals, '%s/reals.pth' % (opt.out_))
             functions.pickle_save(NoiseAmp, '%s/NoiseAmp.pth' % (opt.out_))
 
@@ -160,7 +160,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
     
     for epoch in range(opt.niter):
-        if (Gs == []):
+        if (Gs == []) & (opt.mode != 'SR_train'):
             z_opt,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
             z_opt = m_noise(jnp.tile(z_opt,[1,3,1,1]))
             noise_,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1,opt.nzx,opt.nzy])
@@ -261,13 +261,14 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
             for G,Z_opt,real_curr,real_next,noise_amp in zip(Gs,Zs,reals,reals[1:],NoiseAmp):
                 if count == 0:
                     z,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[1, Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise])
-                    z = jnp.tile(z,[1,3,1,1])
+                    z = jnp.tile(z,[1,opt.nc_z,1,1])
                 else:
                     z,opt.PRNGKey = functions.generate_noise(opt.PRNGKey,[opt.nc_z,Z_opt.shape[2] - 2 * pad_noise, Z_opt.shape[3] - 2 * pad_noise])
                 z = m_noise(z)
                 G_z = G_z[:,:,0:real_curr.shape[2],0:real_curr.shape[3]]
                 G_z = m_image(G_z)
                 z_in = noise_amp*z+G_z
+                G_z, _ = apply_state(G,z_in, G_z)
                 G_z = imresize(G_z,1/opt.scale_factor,opt)
                 G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]]
                 count += 1
@@ -277,7 +278,7 @@ def draw_concat(Gs,Zs,reals,NoiseAmp,in_s,mode,m_noise,m_image,opt):
                 G_z = G_z[:, :, 0:real_curr.shape[2], 0:real_curr.shape[3]]
                 G_z = m_image(G_z)
                 z_in = noise_amp*Z_opt+G_z
-                # G_z = G(z_in.detach(),G_z)
+                G_z, _ = apply_state(G,z_in, G_z)
                 G_z = imresize(G_z,1/opt.scale_factor,opt)
                 G_z = G_z[:,:,0:real_next.shape[2],0:real_next.shape[3]]
                 #if count != (len(Gs)-1):
