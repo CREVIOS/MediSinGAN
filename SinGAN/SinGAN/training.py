@@ -72,29 +72,28 @@ def train(opt,Gs,Zs,reals,NoiseAmp):
     return
 
 @jax.jit
-def discriminator_loss(params, in_stateD, fake, real, prev, PRNGKey, lambda_grad):    
+def discriminator_loss(params, in_stateD, fake, real, PRNGKey, lambda_grad):    
     output, stateD = apply_state(in_stateD, real)
 
     errD_real = -output.mean()#-a
-    D_x = -errD_real
 
+    output, stateD = apply_state(in_stateD, fake)
 
     errD_fake = output.mean()
-    D_G_z = output.mean()
     
     gradient_penalty, stateD, new_PRNGKey = functions.calc_gradient_penalty(params, stateD, PRNGKey, real, fake, lambda_grad)
 
     return errD_real + errD_fake + gradient_penalty, (stateD, new_PRNGKey)
 
 @jax.jit
-def step_stateD(in_stateD, fake, real, prev, PRNGKey, lambda_grad):
-    (errD, (stateD, new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params, in_stateD, fake, real, prev, PRNGKey, lambda_grad)
+def step_stateD(in_stateD, fake, real, PRNGKey, lambda_grad):
+    (errD, (stateD, new_PRNGKey)), grads = jax.value_and_grad(discriminator_loss, has_aux=True)(in_stateD.params, in_stateD, fake, real, PRNGKey, lambda_grad)
     
     stateD = stateD.apply_gradients(grads=grads, batch_stats=stateD.batch_stats)
     return errD, stateD, new_PRNGKey
 
 #@partial(jax.jit, static_argnames="alpha")
-def rec_loss(params,in_stateG, z_opt, z_prev, output, alpha, real, noise_amp):
+def rec_loss(params,in_stateG, z_opt, z_prev, alpha, real, noise_amp):
     if alpha!=0:
         mse_loss = lambda x,y: jnp.mean((x-y)**2)
         Z_opt = noise_amp*z_opt+z_prev
@@ -106,8 +105,8 @@ def rec_loss(params,in_stateG, z_opt, z_prev, output, alpha, real, noise_amp):
     return rec_loss, (out_stateG, Z_opt)
 
 @partial(jax.jit, static_argnames="alpha")
-def step_stateG(in_stateG, z_opt, z_prev, output, alpha, real, noise_amp):
-    (rec_loss_val, (stateG, Z_opt)), grads = jax.value_and_grad(rec_loss, has_aux=True)(in_stateG.params,in_stateG, z_opt, z_prev, output, alpha, real, noise_amp)
+def step_stateG(in_stateG, z_opt, z_prev, alpha, real, noise_amp):
+    (rec_loss_val, (stateG, Z_opt)), grads = jax.value_and_grad(rec_loss, has_aux=True)(in_stateG.params,in_stateG, z_opt, z_prev, alpha, real, noise_amp)
     stateG = stateG.apply_gradients(grads=grads, batch_stats=stateG.batch_stats)
     return rec_loss_val, stateG, Z_opt
 
@@ -177,20 +176,19 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
 
             # train with fake
             if (j==0) & (epoch == 0):
-                if Gs == []:
+                if (Gs == []) & (opt.mode != 'SR_train'):
                     prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
                     in_s = prev
                     prev = m_image(prev)
                     z_prev = jnp.zeros([1,opt.nc_z,opt.nzx,opt.nzy])
                     z_prev = m_noise(z_prev)
                     opt.noise_amp = 1
-                # elif opt.mode == 'SR_train':
-                #     z_prev = in_s
-                #     criterion = nn.MSELoss()
-                #     RMSE = torch.sqrt(criterion(real, z_prev))
-                #     opt.noise_amp = opt.noise_amp_init * RMSE
-                #     z_prev = m_image(z_prev)
-                #     prev = z_prev
+                elif opt.mode == 'SR_train':
+                    z_prev = in_s
+                    RMSE = jnp.sqrt(jnp.mean((real-z_prev)**2))
+                    opt.noise_amp = opt.noise_amp_init * RMSE
+                    z_prev = m_image(z_prev)
+                    prev = z_prev
                 else:
                     
                     prev = draw_concat(Gs,Zs,reals,NoiseAmp,in_s,'rand',m_noise,m_image,opt)
@@ -211,7 +209,7 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
             
             fake, stateG = apply_state(stateG, noise, prev)
             
-            errD, stateD, opt.PRNGKey = step_stateD(stateD, fake, real, prev, opt.PRNGKey, opt.lambda_grad)
+            errD, stateD, opt.PRNGKey = step_stateD(stateD, fake, real, opt.PRNGKey, opt.lambda_grad)
 
         errD2plot.append(errD)
 
@@ -220,9 +218,9 @@ def train_single_scale(netD,paramsD,netG,paramsG,reals,Gs,Zs,in_s,NoiseAmp,opt,c
         ###########################
         for j in range(opt.Gsteps):
 
-            output, stateD = apply_state(stateD, fake)
-            errG = -output.mean()
-            rec_loss, stateG, Z_opt = step_stateG(stateG, z_opt, z_prev, errG, alpha, real, opt.noise_amp)
+            # output, stateD = apply_state(stateD, fake)
+            # errG = -output.mean()
+            rec_loss, stateG, Z_opt = step_stateG(stateG, z_opt, z_prev, alpha, real, opt.noise_amp)
 
         # errG2plot.append(errG.detach()+rec_loss)
         # D_real2plot.append(D_x)
