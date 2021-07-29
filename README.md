@@ -40,9 +40,10 @@ If you use this code for your research, please cite our paper:
     
    <td align="center"><a href="https://github.com/amritkumar9595"><img src="#" width="100px;" alt=""/><br /><sub><b>Amrit Kumar Jethi</b></sub></a><br /><a href="#question-kentcdodds" title="Answering Questions">💬</a> <a href="#" title="Documentation">📖</a> <a href="#" title="Reviewed Pull Requests">👀</a> </td>
    
-    <td align="center"><a href="https://github.com/rvaghashiya"><img src="#" width="100px;" alt=""/><br /><sub><b>Rajkumar Vaghashiya</b></sub></a><br /></td>
+      <td align="center"><a href="https://github.com/rvaghashiya"><img src="#" width="100px;" alt=""/><br /><sub><b>Rajkumar Vaghashiya</b></sub></a><br /><a href="#question-kentcdodds" title="Answering Questions">💬</a> <a href="#" title="Documentation">📖</a> <a href="#" title="Reviewed Pull Requests">👀</a> </td>
    
-    <td align="center"><a href="https://github.com/kwadraterry"><img src="#" width="100px;" alt=""/><br /><sub><b>Ekaterina Nepovinnykh</b></sub></a><br /></td>
+      <td align="center"><a href="https://github.com/kwadraterry"><img src="#" width="100px;" alt=""/><br /><sub><b>Ekaterina Nepovinnykh</b></sub></a><br /><a href="#question-kentcdodds" title="Answering Questions">💬</a> <a href="#" title="Documentation">📖</a> <a href="#" title="Reviewed Pull Requests">👀</a> </td>
+   
 
   </tr>
  </table>
