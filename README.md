@@ -1,6 +1,6 @@
 # MediSinGAN
 
- In this work, we study the utility of SinGAN—an uncondi-tional generative model trained on a single image—for synthetic data generationacross different imaging tasks, namely, multi-modal MRI (Magnetic ResonanceImaging) data generation, brain tumour data generation, and histopathology imagesegmentation.  These applications, built on SinGAN, could become a significantremedy to the data-deprived medical imaging tasks
+ In this work, we study the utility of SinGAN—an unconditional generative model trained on a single image—for synthetic data generationacross different imaging tasks, namely, multi-modal MRI (Magnetic ResonanceImaging) data generation, brain tumour data generation, and histopathology imagesegmentation.  These applications, built on SinGAN, could become a significantremedy to the data-deprived medical imaging tasks
 
 The project has been forked from [SinGAN](https://tamarott.github.io/SinGAN.htm)
 
