@@ -35,15 +35,15 @@ If you use this code for your research, please cite our paper:
   year={2019}
 }
 ```
-<table>
-  <tr>
-    
-   <td align="center"><a href="https://github.com/amritkumar9595"><img src="#" width="100px;" alt=""/><br /><sub><b>Amrit Kumar Jethi</b></sub></a><br /><a href="#question-kentcdodds" title="Answering Questions">💬</a> <a href="#" title="Documentation">📖</a> <a href="#" title="Reviewed Pull Requests">👀</a> </td>
-   
-      <td align="center"><a href="https://github.com/rvaghashiya"><img src="#" width="100px;" alt=""/><br /><sub><b>Rajkumar Vaghashiya</b></sub></a><br /><a href="#question-kentcdodds" title="Answering Questions">💬</a> <a href="#" title="Documentation">📖</a> <a href="#" title="Reviewed Pull Requests">👀</a> </td>
-   
-      <td align="center"><a href="https://github.com/kwadraterry"><img src="#" width="100px;" alt=""/><br /><sub><b>Ekaterina Nepovinnykh</b></sub></a><br /><a href="#question-kentcdodds" title="Answering Questions">💬</a> <a href="#" title="Documentation">📖</a> <a href="#" title="Reviewed Pull Requests">👀</a> </td>
-   
 
-  </tr>
- </table>
+## Contributors ✨
+
+Our wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+* [Amrit Kumar Jethi](https://github.com/amritkumar9595)
+* [Rajkumar Vaghashiya](https://github.com/rvaghashiya)
+* [Екатерина Неповинных](https://github.com/kwadraterry)
+* 
+## LICENSE
+
+[MIT](LICENSE)
