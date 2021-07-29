@@ -43,7 +43,15 @@ Our wonderful people  💻 :
 * [Amrit Kumar Jethi](https://github.com/amritkumar9595)
 * [Rajkumar Vaghashiya](https://github.com/rvaghashiya)
 * [Екатерина Неповинных](https://github.com/kwadraterry)
-* 
+* [Anagha Zachariah](https://github.com/anaghazachariah)
+* [Madhu mithra K K](https://github.com/Madhu081096)
+* [Phuc Nguyen](https://github.com/Mustardburger)
+
+## Acknowledgments
+The  authors  would  like  to  thank  the  Eastern  European  Machine  Learning  Summer  School(EEML’21) team,  especially Viorica Patraucean,  Razvan Pascanu,  and Ferenc Huszar for the in-valuable knowledge and the opportunity to work together on this project.
+
+The authors would like to thank the advisers Margarete Kattau, The Institute of Cancer Research,London, and Fedor Zolotarev, LUT University, Finland, for their guidance and support.
+
 ## LICENSE
 
 [MIT](LICENSE)
