@@ -38,7 +38,7 @@ If you use this code for your research, please cite our paper:
 
 ## Contributors ✨
 
-Our wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+Our wonderful people  💻 :
 
 * [Amrit Kumar Jethi](https://github.com/amritkumar9595)
 * [Rajkumar Vaghashiya](https://github.com/rvaghashiya)
